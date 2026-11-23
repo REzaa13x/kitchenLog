@@ -50,6 +50,8 @@ export const TeamManagementPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [savedCredentials, setSavedCredentials] = useState<{ username: string; password: string } | null>(null);
   const [jobTitle, setJobTitle] = useState('Koki');
   const [role, setRole] = useState<UserRole>('staff');
   const [formError, setFormError] = useState('');
@@ -62,6 +64,7 @@ export const TeamManagementPage: React.FC = () => {
     setConfirmDeleteKitchen(false);
     setKitchenActionError('');
   }, [state.kitchenName, activeWorkspaceId]);
+  useEffect(() => { setSavedCredentials(null); setPassword(''); setShowPassword(false); }, [activeWorkspaceId]);
 
   const resetForm = () => {
     setEditingMemberId(null);
@@ -142,6 +145,8 @@ export const TeamManagementPage: React.FC = () => {
         setFormError(res.message);
         return;
       }
+      setSavedCredentials(password ? { username: username.trim().toLowerCase() || email, password } : null);
+      setShowPassword(false);
       resetForm();
     } finally {
       setSubmitting(false);
@@ -375,7 +380,7 @@ export const TeamManagementPage: React.FC = () => {
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-base font-bold text-[var(--kl-ink)] flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-[var(--kl-accent)]" aria-hidden="true" />
-              <span>{editingMemberId ? 'Ubah Data Anggota' : 'Tambah Anggota Tim'}</span>
+              <span>{editingMemberId ? 'Ubah Data Staf' : 'Daftarkan Staf'}</span>
             </h2>
             {editingMemberId && (
               <button
@@ -427,8 +432,9 @@ export const TeamManagementPage: React.FC = () => {
           </div>
           <div className="space-y-1.5">
             <label htmlFor="member-password" className="block text-sm font-medium text-[var(--kl-ink)]">{editingMemberId ? 'Password baru (opsional)' : 'Password'}</label>
-            <input id="member-password" type="password" autoComplete="new-password" required={!editingMemberId} minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--kl-border-strong)]"/>
-            <p className="text-xs text-[var(--kl-ink-muted)]">{editingMemberId ? 'Kosongkan untuk mempertahankan password. Mengganti password mengakhiri sesi akun.' : 'Minimal 8 karakter. Password tidak ditampilkan kembali setelah disimpan.'}</p>
+            <input id="member-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" required={!editingMemberId} minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--kl-border-strong)]"/>
+            <button type="button" aria-controls="member-password" aria-pressed={showPassword} onClick={() => setShowPassword(v => !v)} className="min-h-[44px] text-sm font-semibold text-[var(--kl-accent)]">{showPassword ? 'Sembunyikan password' : 'Tampilkan password'}</button>
+            <p className="text-xs text-[var(--kl-ink-muted)]">Password lama tidak dapat dilihat. {editingMemberId ? 'Isi password baru untuk reset; sesi akun akan berakhir.' : 'Minimal 8 karakter. Login ditampilkan setelah pendaftaran berhasil.'}</p>
           </div>
           <div className="space-y-2">
             <label htmlFor="member-job" className="block text-sm font-medium text-[var(--kl-ink)]">
@@ -489,6 +495,13 @@ export const TeamManagementPage: React.FC = () => {
 
         {/* Daftar Anggota Terdaftar */}
         <section className="lg:col-span-7 rounded-2xl border border-[var(--kl-border)] bg-white p-5 space-y-4">
+          {savedCredentials && <div role="status" className="rounded-xl border border-[var(--kl-tint-border)] bg-[var(--kl-tint)] p-4 space-y-2">
+            <h3 className="font-semibold">Login staf berhasil disimpan</h3>
+            <p>Username: <code>{savedCredentials.username}</code></p>
+            <p>Password: <code className="break-all select-all">{savedCredentials.password}</code></p>
+            <p className="text-xs">Berikan secara pribadi. Password hanya ditampilkan pada sesi halaman ini; tidak disimpan sebagai teks di server.</p>
+            <button type="button" onClick={() => setSavedCredentials(null)} className="min-h-[44px] text-sm font-semibold text-[var(--kl-accent)]">Tutup informasi login</button>
+          </div>}
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-base font-bold text-[var(--kl-ink)] flex items-center gap-2">
               <Users className="w-4 h-4 text-[var(--kl-accent)]" aria-hidden="true" />

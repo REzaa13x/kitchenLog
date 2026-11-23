@@ -1,0 +1,12 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import assert from 'node:assert/strict';
+import { KitchenContext } from '../src/storage/kitchenContext';
+import { TeamManagementPage } from '../src/pages/TeamManagementPage';
+const context:any={state:{kitchenName:'Ngolab',users:[]},workspaces:[],activeWorkspaceId:'ws',currentUser:{id:'admin',role:'supervisor'},canDeleteActiveWorkspace:false};
+const html=renderToStaticMarkup(<KitchenContext.Provider value={context}><TeamManagementPage/></KitchenContext.Provider>);
+assert.match(html,/Daftarkan Staf/);
+assert.match(html,/Tampilkan password/);
+assert.match(html,/Password lama tidak dapat dilihat/);
+assert.doesNotMatch(html,/Password tidak ditampilkan kembali setelah disimpan/);
+console.log('PASS pendaftaran staf dan kontrol tampil password');
