@@ -19,6 +19,7 @@ import { formatDateIndo, formatTimeDotWib } from '../utils/wibTime';
 import {
   checkPassword,
   isValidEmail,
+  mapAuthError,
   MIN_PASSWORD_LENGTH,
   normalizePhone,
   validateLogin,
@@ -109,9 +110,6 @@ export const LoginPage: React.FC = () => {
     try {
       await signInWithEmail(email, password);
     } catch (err) {
-      // Pesan sudah diterjemahkan oleh mapAuthError di dalam store? Tidak —
-      // di sini kita terjemahkan lagi untuk tampilan.
-      const { mapAuthError } = await import('../utils/authValidation');
       setFormError(mapAuthError(err));
     } finally {
       setBusy(false);

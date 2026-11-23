@@ -638,9 +638,12 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const sendResetPassword = async (email: string): Promise<ActionResult> => {
     try {
       await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+      // Firebase sengaja membalas sukses untuk email apa pun (anti-enumerasi),
+      // jadi pesan dibuat netral: tidak memastikan email itu terdaftar.
       return {
         ok: true,
-        message: 'Email atur ulang password sudah dikirim. Periksa kotak masuk (dan folder spam).',
+        message:
+          'Permintaan diterima. Jika email tersebut terdaftar, tautan atur ulang sudah dikirim — periksa kotak masuk dan folder spam.',
       };
     } catch (err) {
       return { ok: false, message: mapAuthError(err) };

@@ -11,23 +11,16 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;0,9..40,400..700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
     <!--
-      Mode demo dipilih lewat ?demo=1 (mis. http://localhost:3000/?demo=1).
-      Mode demo memuat data contoh di memori dan tidak menyentuh Firebase.
-      Tanpa parameter itu, aplikasi berjalan normal dengan Firebase.
+      Entry point HARUS berupa tag <script src> statis agar Vite menemukannya
+      saat build produksi. Mode demo tidak lagi dipilih lewat index.html,
+      melainkan lewat file terpisah (demo.html) supaya build produksi bersih
+      dan aplikasi utama selalu memakai Firebase.
     -->
-    <script type="module">
-      const isDemo = new URLSearchParams(location.search).get('demo') === '1';
-      const entry = isDemo ? '/src/main-demo.tsx' : '/src/main.tsx';
-      if (isDemo) document.title = 'KitchenLog — Mode Demo';
-      const s = document.createElement('script');
-      s.type = 'module';
-      s.src = entry;
-      document.body.appendChild(s);
-    </script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
