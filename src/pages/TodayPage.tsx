@@ -331,7 +331,7 @@ export const TodayPage: React.FC<TodayPageProps> = ({
               >
                 <span>
                   {isPicOpening
-                    ? 'Buka Laporan Kebersihan Opening & Ringkasan AI'
+                    ? 'Buka Laporan Kebersihan Opening & Ringkasan Serah Terima'
                     : 'Buka Detail Laporan Kebersihan Opening'}
                 </span>
                 <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />

@@ -1,6 +1,5 @@
 {
   "name": "KitchenLog",
   "description": "Aplikasi operasional harian dapur untuk mencatat absensi staf per shift, laporan kebersihan dengan bukti foto, catatan serah terima, dan laporan barang rusak atau hilang.",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": ["camera"]
 }
