@@ -1365,7 +1365,7 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
       handleFirestoreError(err, OperationType.UPDATE, path);
     }
 
-    const msg = 'Ringkasan serah terima AI berhasil dikonfirmasi untuk tim Closing.';
+    const msg = 'Ringkasan serah terima berhasil dikonfirmasi untuk tim Closing.';
     showToast(msg);
     return { ok: true, message: msg };
   };

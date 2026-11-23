@@ -1,20 +1,36 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# KitchenLog — Operasional Harian Dapur
 
-# Run and deploy your AI Studio app
+Aplikasi operasional harian dapur: absensi staf per shift, laporan kebersihan
+berbasis foto, serah terima antar shift, dan pelaporan barang rusak/hilang.
 
-This contains everything you need to run your app locally.
+## Menjalankan secara lokal
 
-View your app in AI Studio: https://ai.studio/apps/95101fcf-9d0c-4966-a8f9-103ef05847d0
+**Prasyarat:** Node.js
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
+1. Install dependency:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Jalankan aplikasi:
    `npm run dev`
+3. Buka http://localhost:3000
+
+Tidak ada API key yang perlu diisi. Pengaturan opsional (mis. `PORT`) dapat
+disalin dari [.env.example](.env.example) menjadi `.env.local`.
+
+## Perintah
+
+| Perintah | Kegunaan |
+|---|---|
+| `npm run dev` | Menjalankan server + Vite (mode pengembangan) |
+| `npm run build` | Build produksi ke `dist/` |
+| `npm start` | Menjalankan server dari hasil build (`NODE_ENV=production`) |
+| `npm run lint` | Pemeriksaan TypeScript (`tsc --noEmit`) |
+| `npm run lint:rules` | Lint aturan Firestore |
+
+## Catatan arsitektur
+
+- **Frontend:** React + Vite, Firebase Auth & Firestore (`src/firebase.ts`).
+- **Backend:** `server.ts` hanya menyajikan aplikasi (Vite middleware saat
+  pengembangan, `dist/` statis saat produksi).
+- **Ringkasan Serah Terima** disusun di sisi aplikasi melalui
+  `src/utils/handoverSummary.ts` — deterministik, tanpa panggilan jaringan,
+  tanpa API key, dan tanpa mengirim data operasional ke pihak ketiga.

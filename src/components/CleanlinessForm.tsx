@@ -4,7 +4,7 @@ import { createInitialCleanlinessAreas } from '../utils/cleanlinessTemplate';
 import { useKitchen } from '../storage/kitchenStore';
 import { CleanlinessAreaEntry, CleanlinessAreaStatus, ShiftType } from '../types/kitchen';
 import { formatDateIndo, SHIFT_META } from '../utils/wibTime';
-import { AiHandoverSummaryBox } from './AiHandoverSummaryBox';
+import { HandoverSummaryBox } from './HandoverSummaryBox';
 import { PhotoCaptureField } from './PhotoCaptureField';
 import { StatusIndicator } from './StatusIndicator';
 
@@ -75,8 +75,8 @@ export const CleanlinessForm: React.FC<CleanlinessFormProps> = ({
         {shift === 'opening' && (
           <p className="text-xs text-[var(--kl-ink-muted)]">
             {existingReport.confirmedAiSummary
-              ? 'Ringkasan Serah Terima AI sudah dikonfirmasi untuk tim Closing.'
-              : 'Anda dapat membuat dan mengonfirmasi Ringkasan Serah Terima AI melalui Detail Laporan.'}
+              ? 'Ringkasan Serah Terima sudah dikonfirmasi untuk tim Closing.'
+              : 'Anda dapat menyusun dan mengonfirmasi Ringkasan Serah Terima melalui Detail Laporan.'}
           </p>
         )}
 
@@ -88,7 +88,7 @@ export const CleanlinessForm: React.FC<CleanlinessFormProps> = ({
           <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
           <span>
             {shift === 'opening'
-              ? 'Lihat Detail & Ringkasan Serah Terima AI'
+              ? 'Lihat Detail & Ringkasan Serah Terima'
               : 'Lihat Detail & Foto Laporan'}
           </span>
         </button>
@@ -314,7 +314,7 @@ export const CleanlinessForm: React.FC<CleanlinessFormProps> = ({
               />
             </div>
 
-            <AiHandoverSummaryBox
+            <HandoverSummaryBox
               areas={areas}
               handoverNote={handoverNote}
               openItemReports={openItemReports}
@@ -325,7 +325,7 @@ export const CleanlinessForm: React.FC<CleanlinessFormProps> = ({
                 setConfirmedAiSummary(summaryText);
                 const label = `${formatDateIndo(nowWib.date, false)}, ${nowWib.timeHHMM.replace(':', '.')} WIB`;
                 setAiConfirmedAt(label);
-                showToast('Ringkasan serah terima AI dikonfirmasi. Kirim laporan untuk meneruskannya ke tim Closing.');
+                showToast('Ringkasan serah terima dikonfirmasi. Kirim laporan untuk meneruskannya ke tim Closing.');
               }}
             />
           </div>

@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Sparkles } from 'lucide-react';
-import { auth } from '../firebase';
+import { AlertTriangle, CheckCircle2, ListChecks } from 'lucide-react';
 import { CleanlinessAreaEntry, ItemReport } from '../types/kitchen';
 import { StatusIndicator } from './StatusIndicator';
+import { buildHandoverSummary, MAX_SUMMARY_POINTS } from '../utils/handoverSummary';
 
-interface AiHandoverSummaryBoxProps {
+interface HandoverSummaryBoxProps {
   areas: CleanlinessAreaEntry[];
   handoverNote: string;
   openItemReports: ItemReport[];
@@ -14,7 +14,7 @@ interface AiHandoverSummaryBoxProps {
   onConfirmSummary: (summaryText: string) => Promise<void> | void;
 }
 
-export const AiHandoverSummaryBox: React.FC<AiHandoverSummaryBoxProps> = ({
+export const HandoverSummaryBox: React.FC<HandoverSummaryBoxProps> = ({
   areas,
   handoverNote,
   openItemReports,
@@ -24,7 +24,6 @@ export const AiHandoverSummaryBox: React.FC<AiHandoverSummaryBoxProps> = ({
   onConfirmSummary,
 }) => {
   const [draft, setDraft] = useState(confirmedSummary ?? '');
-  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [justConfirmed, setJustConfirmed] = useState(false);
@@ -36,62 +35,16 @@ export const AiHandoverSummaryBox: React.FC<AiHandoverSummaryBoxProps> = ({
   }, [confirmedSummary]);
 
   const issueAreas = areas.filter((a) => a.status === 'Perlu Ditangani');
+  const openReports = openItemReports.filter((item) => item.status !== 'Selesai');
 
-  const handleGenerate = async () => {
-    setLoading(true);
+  const handleGenerate = () => {
     setErrorMsg(null);
     setConfirmError(null);
     setJustConfirmed(false);
 
-    try {
-      const idToken = await auth.currentUser?.getIdToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (idToken) {
-        headers.Authorization = `Bearer ${idToken}`;
-      }
-
-      const response = await fetch('/api/handover-summary', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          issueAreas: issueAreas.map((a) => ({
-            label: a.label,
-            note: a.note,
-          })),
-          handoverNote,
-          openItemReports: openItemReports.map((item) => ({
-            type: item.type,
-            itemName: item.itemName,
-            quantity: item.quantity,
-            location: item.location,
-            lastKnownLocation: item.lastKnownLocation,
-            notes: item.notes,
-            status: item.status,
-          })),
-        }),
-      });
-
-      const data = (await response.json().catch(() => ({}))) as {
-        summary?: string;
-        error?: string;
-      };
-
-      if (!response.ok || !data.summary) {
-        setErrorMsg(
-          data.error ||
-            'Ringkasan AI gagal dibuat. Anda tetap dapat menulis dan menyimpan catatan serah terima secara manual.'
-        );
-        return;
-      }
-
-      setDraft(data.summary);
-    } catch {
-      setErrorMsg(
-        'Ringkasan AI gagal dibuat karena gangguan jaringan. Anda tetap dapat menyimpan catatan serah terima secara manual.'
-      );
-    } finally {
-      setLoading(false);
-    }
+    // Seluruh penyusunan terjadi di perangkat ini — tanpa permintaan jaringan.
+    const summary = buildHandoverSummary({ areas, handoverNote, openItemReports });
+    setDraft(summary);
   };
 
   const handleConfirm = async () => {
@@ -100,8 +53,14 @@ export const AiHandoverSummaryBox: React.FC<AiHandoverSummaryBoxProps> = ({
       return;
     }
     setConfirmError(null);
-    await onConfirmSummary(draft.trim());
-    setJustConfirmed(true);
+    try {
+      await onConfirmSummary(draft.trim());
+      setJustConfirmed(true);
+    } catch {
+      setErrorMsg(
+        'Ringkasan gagal disimpan. Periksa koneksi Anda lalu coba lagi — draf Anda tidak hilang.'
+      );
+    }
   };
 
   const isConfirmedSynced =
@@ -113,7 +72,7 @@ export const AiHandoverSummaryBox: React.FC<AiHandoverSummaryBoxProps> = ({
         <div className="space-y-0.5">
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="text-sm font-bold text-[var(--kl-ink)]">
-              Ringkasan Serah Terima AI (Khusus PIC Opening)
+              Ringkasan Serah Terima (Khusus PIC Opening)
             </h4>
             {confirmedSummary ? (
               <StatusIndicator
@@ -123,18 +82,19 @@ export const AiHandoverSummaryBox: React.FC<AiHandoverSummaryBoxProps> = ({
             ) : null}
           </div>
           <p className="text-xs text-[var(--kl-ink-muted)]">
-            Merangkum maksimal 3 poin tindak lanjut dari checklist “Perlu Ditangani” ({issueAreas.length}), catatan serah terima, dan laporan barang terbuka ({openItemReports.length}).
+            Menyusun maksimal {MAX_SUMMARY_POINTS} poin tindak lanjut dari checklist “Perlu Ditangani” (
+            {issueAreas.length}), catatan serah terima, dan laporan barang terbuka ({openReports.length}).
+            Disusun di perangkat ini tanpa mengirim data ke mana pun.
           </p>
         </div>
 
         <button
           type="button"
-          disabled={loading}
           onClick={handleGenerate}
           className="min-h-[44px] px-4 py-2 rounded-xl bg-[var(--kl-accent)] text-white text-xs sm:text-sm font-semibold hover:bg-[var(--kl-accent-hover)] disabled:opacity-60 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
         >
-          <Sparkles className="w-4 h-4 shrink-0" aria-hidden="true" />
-          <span>{loading ? 'Membuat Ringkasan…' : 'Buat Ringkasan AI'}</span>
+          <ListChecks className="w-4 h-4 shrink-0" aria-hidden="true" />
+          <span>Susun Ringkasan</span>
         </button>
       </div>
 
@@ -151,13 +111,13 @@ export const AiHandoverSummaryBox: React.FC<AiHandoverSummaryBoxProps> = ({
       {(draft || errorMsg) && (
         <div className="space-y-2">
           <label
-            htmlFor="ai-handover-draft"
+            htmlFor="handover-summary-draft"
             className="block text-xs font-semibold text-[var(--kl-ink)]"
           >
             Draf Ringkasan Serah Terima (dapat diedit sebelum dikonfirmasi)
           </label>
           <textarea
-            id="ai-handover-draft"
+            id="handover-summary-draft"
             rows={4}
             value={draft}
             onChange={(e) => {
@@ -165,7 +125,7 @@ export const AiHandoverSummaryBox: React.FC<AiHandoverSummaryBoxProps> = ({
               setJustConfirmed(false);
               if (confirmError) setConfirmError(null);
             }}
-            placeholder="Klik 'Buat Ringkasan AI' untuk menyusun draf otomatis, atau tulis maksimal 3 poin tindak lanjut secara manual."
+            placeholder="Klik 'Susun Ringkasan' untuk menyusun draf otomatis, atau tulis maksimal 3 poin tindak lanjut secara manual."
             className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--kl-border-strong)] bg-white text-sm text-[var(--kl-ink)] leading-relaxed focus:outline-none focus:ring-2 focus:ring-[var(--kl-accent)]"
           />
 

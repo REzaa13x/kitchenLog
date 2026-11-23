@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, MessageSquareText, Save, Sparkles } from 'lucide-react';
-import { AiHandoverSummaryBox } from '../components/AiHandoverSummaryBox';
+import { HandoverSummaryBox } from '../components/HandoverSummaryBox';
 import { PhotoViewer } from '../components/PhotoViewer';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { useKitchen } from '../storage/kitchenStore';
@@ -163,7 +163,7 @@ export const CleanlinessDetailPage: React.FC<CleanlinessDetailPageProps> = ({
             <StatusIndicator label="Sudah Dikirim" tone="success" size="md" />
           </section>
 
-          {/* Ringkasan Serah Terima AI & Catatan Serah Terima (khusus Opening) */}
+          {/* Ringkasan Serah Terima & Catatan Serah Terima (khusus Opening) */}
           {report.shift === 'opening' && (
             <section className="rounded-2xl border border-[var(--kl-border)] bg-white p-5 space-y-4">
               <h3 className="text-base font-bold text-[var(--kl-ink)] flex items-center gap-2">
@@ -203,7 +203,7 @@ export const CleanlinessDetailPage: React.FC<CleanlinessDetailPageProps> = ({
                     </div>
                   </div>
 
-                  <AiHandoverSummaryBox
+                  <HandoverSummaryBox
                     areas={report.areas}
                     handoverNote={manualHandoverDraft}
                     openItemReports={openItemReports}
@@ -226,7 +226,7 @@ export const CleanlinessDetailPage: React.FC<CleanlinessDetailPageProps> = ({
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-xs font-bold text-[var(--kl-accent-deep)] inline-flex items-center gap-1.5">
                           <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-                          Ringkasan Serah Terima AI (Terkonfirmasi)
+                          Ringkasan Serah Terima (Terkonfirmasi)
                         </span>
                         {report.aiSummaryConfirmedAt && (
                           <span className="text-xs text-[var(--kl-ink-sub)] font-mono tabular-nums">
