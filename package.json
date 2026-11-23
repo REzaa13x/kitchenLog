@@ -14,7 +14,8 @@
     "verify:handover": "tsx scripts/verify-handover-summary.ts && tsx scripts/verify-handover-component.tsx",
     "dev:demo": "tsx server.ts",
     "verify:auth": "tsx scripts/verify-auth-validation.ts",
-    "verify:all": "npm run verify:handover && npm run verify:auth"
+    "verify:all": "npm run verify:handover && npm run verify:auth",
+    "start:api": "node server/index.js"
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",
@@ -26,6 +27,7 @@
     "firebase": "^13.4.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "mysql2": "^3.24.6",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^8.3.0"
