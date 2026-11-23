@@ -45,6 +45,7 @@ interface ApiUser {
   role: 'staff' | 'supervisor';
   jobTitle: string;
   emailVerified?: boolean;
+  username?: string;
 }
 
 function toAuthUser(u: ApiUser | null): AuthUserLike | null {
@@ -67,6 +68,7 @@ function toAccount(u: ApiUser | null): UserAccount | null {
     role: u.role,
     jobTitle: u.jobTitle,
     phone: u.phone ?? undefined,
+    username: u.username,
   };
 }
 
@@ -220,7 +222,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      body: JSON.stringify({ username: email.trim().toLowerCase(), password }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || 'Gagal masuk.');

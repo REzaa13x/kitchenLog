@@ -1,0 +1,11 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import assert from 'node:assert/strict';
+import { KitchenContext } from '../src/storage/kitchenContext';
+import { LoginPage } from '../src/pages/LoginPage';
+const context:any={firebaseUser:null,workspaceAccessStatus:'signed_out',authError:null,nowWib:{date:'2026-11-23',time:'12:00',hours:12,minutes:0}};
+const html=renderToStaticMarkup(<KitchenContext.Provider value={context}><LoginPage/></KitchenContext.Provider>);
+assert.match(html,/autoComplete="username"/);
+assert.match(html,/autoComplete="current-password"/);
+assert.doesNotMatch(html,/Masuk dengan Google|>Daftar<|Buat Akun/);
+console.log('PASS login-only username/password UI');

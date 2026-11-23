@@ -85,6 +85,8 @@ export interface KitchenContextValue {
     email: string;
     role: UserRole;
     jobTitle: string;
+    username?: string;
+    password?: string;
   }) => Promise<ActionResult>;
   updateStaffMember: (
     staffId: string,
@@ -93,6 +95,8 @@ export interface KitchenContextValue {
       email: string;
       role: UserRole;
       jobTitle: string;
+      username?: string;
+      password?: string;
     }
   ) => Promise<ActionResult>;
   removeStaffMember: (staffId: string) => Promise<ActionResult>;

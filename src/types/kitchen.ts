@@ -10,6 +10,9 @@ export interface UserAccount {
   jobTitle: string;
   /** Nomor telepon (opsional, tersimpan sebagai data profil). */
   phone?: string;
+  /** ID baris tabel staff (bila berbeda dari id akun). */
+  staffId?: string;
+  username?: string;
 }
 
 export interface ShiftAssignment {

@@ -165,7 +165,7 @@ async function requireAuth(req, res, next) {
     if (!token) return res.status(401).json({ error: 'Autentikasi diperlukan.' });
 
     const [rows] = await getPool().query(
-      `SELECT s.token, s.expires_at, u.id, u.email, u.name, u.phone, u.role, u.job_title, u.email_verified
+      `SELECT s.token, s.expires_at, u.id, u.username, u.email, u.name, u.phone, u.role, u.job_title, u.email_verified
          FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token = ? LIMIT 1`,
       [token]
@@ -180,6 +180,7 @@ async function requireAuth(req, res, next) {
 
     req.user = {
       id: session.id,
+      username: session.username,
       email: session.email,
       name: session.name,
       phone: session.phone,
@@ -208,74 +209,44 @@ async function loadWorkspace(userId, email, workspaceId) {
     .filter(Boolean);
   const isMember = ws.owner_id === userId || members.includes(String(email).toLowerCase());
   if (!isMember) return { error: 'Anda bukan anggota ruang kerja ini.', status: 403 };
-  return { ws, isSupervisor: ws.owner_id === userId || members.includes(String(email).toLowerCase()) && String(ws.supervisor_emails || '').toLowerCase().includes(String(email).toLowerCase()) };
+  return { ws, isSupervisor: ws.owner_id === userId || members.includes(String(email).toLowerCase()) && String(ws.supervisor_emails || '').split(',').map(s => s.trim().toLowerCase()).includes(String(email).toLowerCase()) };
 }
 
 // ---------- Auth ----------
 
 app.post('/api/auth/register', async (req, res) => {
-  const { name, email, phone, password } = req.body ?? {};
-  if (!name || String(name).trim().length < 2) return res.status(400).json({ error: 'Nama minimal 2 karakter.' });
-  if (!isEmail(email)) return res.status(400).json({ error: 'Format email tidak valid.' });
-  if (!isPhone(phone)) return res.status(400).json({ error: 'Nomor telepon tidak valid. Contoh: 08123456789' });
-  if (String(password || '').length < 8) return res.status(400).json({ error: 'Password minimal 8 karakter.' });
-
-  const cleanEmail = String(email).trim().toLowerCase();
-  const cleanName = String(name).trim().slice(0, 100);
-  const cleanPhone = normalizePhone(phone);
-
-  try {
-    const pool = getPool();
-    const [exists] = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [cleanEmail]);
-    if (exists.length > 0) return res.status(409).json({ error: 'Email ini sudah terdaftar. Silakan masuk.' });
-
-    const userId = uid('u');
-    await pool.query(
-      `INSERT INTO users (id, email, password_hash, name, phone, role, job_title, email_verified)
-       VALUES (?, ?, ?, ?, ?, 'staff', 'Staf Dapur', 0)`,
-      [userId, cleanEmail, hashPassword(String(password)), cleanName, cleanPhone]
-    );
-
-    // Ruang kerja pribadi agar pendaftar tidak melihat data dapur lain.
-    const wsId = `ws-${userId}`.slice(0, 64);
-    await pool.query(
-      `INSERT INTO workspaces (id, kitchen_name, owner_id, owner_email, member_emails, supervisor_emails)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [wsId, `${cleanName} (Pribadi)`, userId, cleanEmail, cleanEmail, cleanEmail]
-    );
-    await pool.query(
-      `INSERT INTO staff (id, workspace_id, name, email, role, job_title)
-       VALUES (?, ?, ?, ?, 'supervisor', 'Supervisor Operasional')`,
-      [`sup-${userId}`.slice(0, 128), wsId, cleanName, cleanEmail]
-    );
-
-    const token = newToken();
-    await pool.query(
-      'INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))',
-      [token, userId]
-    );
-
-    res.status(201).json({
-      token,
-      user: { id: userId, email: cleanEmail, name: cleanName, phone: cleanPhone, role: 'staff', jobTitle: 'Staf Dapur', emailVerified: false },
-      workspace: { id: wsId, kitchenName: `${cleanName} (Pribadi)` },
-      note: 'Akun dibuat. Ruang kerja pribadi disiapkan; minta Supervisor menambahkan email Anda untuk bergabung ke dapur tim.',
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Gagal mendaftarkan akun.', detail: String(err?.message || err) });
-  }
+  return res.status(403).json({ error: 'Pendaftaran publik ditutup. Hubungi Supervisor.' });
 });
 
+// ponytail: per-process limiter; use a shared store for multiple backend replicas.
+const loginAttempts = new Map();
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body ?? {};
-  if (!isEmail(email) || !password) return res.status(400).json({ error: 'Email dan password wajib diisi.' });
+  const now = Date.now();
+  for (const [key, entry] of loginAttempts) if (entry.until <= now) loginAttempts.delete(key);
+  const ipKey = `ip:${req.ip}`;
+  const identifierKey = typeof (req.body?.username ?? req.body?.email) === 'string'
+    ? `account:${(req.body.username ?? req.body.email).trim().toLowerCase().slice(0, 200)}` : ipKey;
+  for (const [key, limit] of [[ipKey, 30], [identifierKey, 10]]) {
+    const entry = loginAttempts.get(key) || { count: 0, until: now + 15 * 60_000 };
+    if (entry.count >= limit || (!loginAttempts.has(key) && loginAttempts.size >= 10000)) {
+      res.setHeader('Retry-After', '900');
+      return res.status(429).json({ error: 'Terlalu banyak percobaan masuk. Coba lagi nanti.' });
+    }
+    entry.count++;
+    loginAttempts.set(key, entry);
+  }
+  const { username, email, password } = req.body ?? {};
+  const identifier = username ?? email;
+  if (typeof identifier !== 'string' || identifier.length > 200 || typeof password !== 'string' || password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Username dan password tidak valid.' });
+  const clean = identifier.trim().toLowerCase();
+  if (!isEmail(clean) && !/^[a-z0-9][a-z0-9._-]{2,31}$/.test(clean)) return res.status(400).json({ error: 'Username tidak valid.' });
   try {
     const pool = getPool();
-    const [rows] = await pool.query('SELECT * FROM users WHERE email = ? LIMIT 1', [String(email).trim().toLowerCase()]);
-    if (rows.length === 0) return res.status(401).json({ error: 'Email atau password salah.' });
+    const [rows] = await pool.query(isEmail(clean) ? "SELECT u.* FROM users u WHERE u.email = ? AND (u.role = 'supervisor' OR EXISTS (SELECT 1 FROM workspaces w WHERE w.owner_id = u.id OR (FIND_IN_SET(u.email, REPLACE(w.member_emails, ' ', '')) > 0 AND FIND_IN_SET(u.email, REPLACE(w.supervisor_emails, ' ', '')) > 0))) LIMIT 1" : 'SELECT * FROM users WHERE username = ? LIMIT 1', [clean]);
+    if (rows.length === 0) return res.status(401).json({ error: 'Username atau password salah.' });
     const user = rows[0];
     if (!verifyPassword(String(password), user.password_hash)) {
-      return res.status(401).json({ error: 'Email atau password salah.' });
+      return res.status(401).json({ error: 'Username atau password salah.' });
     }
     const token = newToken();
     await pool.query(
@@ -285,7 +256,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({
       token,
       user: {
-        id: user.id, email: user.email, name: user.name, phone: user.phone,
+        id: user.id, username: user.username, email: user.email, name: user.name, phone: user.phone,
         role: user.role, jobTitle: user.job_title, emailVerified: Boolean(user.email_verified),
       },
     });
@@ -318,24 +289,8 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/auth/forgot-password', async (req, res) => {
-  const { email } = req.body ?? {};
-  if (!isEmail(email)) return res.status(400).json({ error: 'Format email tidak valid.' });
-  try {
-    const pool = getPool();
-    const [rows] = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [String(email).trim().toLowerCase()]);
-    if (rows.length > 0) {
-      const token = newToken();
-      await pool.query(
-        'UPDATE users SET reset_token = ?, reset_expires = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE id = ?',
-        [token, rows[0].id]
-      );
-    }
-    // Selalu balas netral (anti-enumerasi email).
-    res.json({ ok: true, message: 'Jika email terdaftar, tautan atur ulang sudah dibuat.' });
-  } catch (err) {
-    res.status(500).json({ error: 'Gagal memproses permintaan.', detail: String(err?.message || err) });
-  }
+app.post('/api/auth/forgot-password', (_req, res) => {
+  res.json({ ok: true, message: 'Hubungi Supervisor untuk mengatur ulang password.' });
 });
 
 // ---------- Data operasional ----------
@@ -354,25 +309,42 @@ app.get('/api/state', requireAuth, async (req, res) => {
     const [attRows] = await pool.query('SELECT * FROM attendance WHERE workspace_id = ? ORDER BY att_date, shift', [workspaceId]);
     const [cleanRows] = await pool.query('SELECT * FROM cleanliness_reports WHERE workspace_id = ? ORDER BY report_date, shift', [workspaceId]);
     const [itemRows] = await pool.query('SELECT * FROM item_reports WHERE workspace_id = ? ORDER BY created_at DESC', [workspaceId]);
+    const [userRows] = await pool.query('SELECT u.id, u.email, u.username FROM users u JOIN staff s ON s.email = u.email WHERE s.workspace_id = ?', [workspaceId]);
+    const usernameByEmail = new Map(userRows.map(u => [String(u.email).toLowerCase(), u.username]));
+    const userByEmail = new Map(userRows.map((u) => [String(u.email).toLowerCase(), u.id]));
+    const staffIdToEmail = new Map(staffRows.map((s) => [s.id, String(s.email).toLowerCase()]));
+    // Terjemahkan id staff menjadi id akun (bila emailnya terdaftar), agar
+    // frontend yang memakai currentUser.id selalu cocok.
+    const resolveId = (id) => {
+      if (!id) return id;
+      const email = staffIdToEmail.get(id);
+      if (!email) return id;
+      return userByEmail.get(email) || id;
+    };
 
     res.json({
       kitchenName: access.ws.kitchen_name,
       users: staffRows.map((s) => ({
-        id: s.id, name: s.name, email: s.email, role: s.role, jobTitle: s.job_title,
+        // id memakai id akun (users.id) bila email cocok, agar currentUser.id
+        // dapat dicocokkan dengan staffIds/picId. staff_id tetap dikirim terpisah.
+        id: userByEmail.get(String(s.email).toLowerCase()) || s.id,
+        staffId: s.id,
+        username: usernameByEmail.get(String(s.email).toLowerCase()) || null,
+        name: s.name, email: s.email, role: s.role, jobTitle: s.job_title,
       })),
       assignments: asgRows.map((a) => ({
         id: a.id,
         date: String(a.shift_date).slice(0, 10),
         shift: a.shift,
-        staffIds: String(a.staff_ids || '').split(',').filter(Boolean),
-        picId: a.pic_id,
+        staffIds: String(a.staff_ids || '').split(',').filter(Boolean).map(resolveId),
+        picId: resolveId(a.pic_id),
       })),
       attendance: attRows.map((a) => ({
         id: a.id,
         assignmentId: a.assignment_id,
         date: String(a.att_date).slice(0, 10),
         shift: a.shift,
-        staffId: a.staff_id,
+        staffId: resolveId(a.staff_id),
         staffEmail: a.staff_email,
         checkInTime: a.check_in_time,
         checkInMinutes: a.check_in_minutes,
@@ -598,7 +570,7 @@ app.get('/api/photos/:id', requireAuth, async (req, res) => {
 });
 
 // 404 JSON untuk rute /api yang tidak dikenal
-registerExtraRoutes(app, { getPool, requireAuth, loadWorkspace, uid, wibNow, isEmail });
+registerExtraRoutes(app, { getPool, requireAuth, loadWorkspace, uid, wibNow, isEmail, hashPassword });
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.' }));
 

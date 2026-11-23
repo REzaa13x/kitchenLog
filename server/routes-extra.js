@@ -1,6 +1,8 @@
 // Endpoint tambahan (staff, jadwal, konfirmasi absensi, workspace).
 // Diimpor oleh server/index.js sebelum penanganan 404.
 import { Router } from 'express';
+import { registerStaffAccounts } from './staff-accounts.js';
+
 
 export function registerExtraRoutes(app, ctx) {
   const { getPool, requireAuth, loadWorkspace, uid, wibNow, isEmail } = ctx;
@@ -10,11 +12,14 @@ export function registerExtraRoutes(app, ctx) {
 
   // ---------- Workspace ----------
   router.post('/workspaces', async (req, res) => {
+
     const { kitchenName } = req.body ?? {};
     const cleanName = String(kitchenName || '').trim().slice(0, 120);
     if (!cleanName) return res.status(400).json({ error: 'Nama dapur wajib diisi.' });
     try {
       const p = getPool();
+      const [managed] = await p.query("SELECT id FROM workspaces WHERE owner_id = ? OR (FIND_IN_SET(?, REPLACE(member_emails, ' ', '')) > 0 AND FIND_IN_SET(?, REPLACE(supervisor_emails, ' ', '')) > 0) LIMIT 1", [req.user.id, req.user.email, req.user.email]);
+      if (!managed.length) return res.status(403).json({ error: 'Hanya Supervisor yang dapat membuat dapur.' });
       const wsId = uid('dapur').slice(0, 64);
       await p.query(
         `INSERT INTO workspaces (id, kitchen_name, owner_id, owner_email, member_emails, supervisor_emails)
@@ -61,85 +66,7 @@ export function registerExtraRoutes(app, ctx) {
     }
   });
 
-  // ---------- Staff ----------
-  router.post('/staff', async (req, res) => {
-    const { workspaceId, name, email, role, jobTitle } = req.body ?? {};
-    if (!name || String(name).trim().length < 2) return res.status(400).json({ error: 'Nama minimal 2 karakter.' });
-    if (!isEmail(email)) return res.status(400).json({ error: 'Format email tidak valid.' });
-    try {
-      const access = await loadWorkspace(req.user.id, req.user.email, String(workspaceId || ''));
-      if (access.error) return res.status(access.status).json({ error: access.error });
-      if (!access.isSupervisor) return res.status(403).json({ error: 'Hanya Supervisor yang dapat menambah anggota tim.' });
-
-      const p = getPool();
-      const cleanEmail = String(email).trim().toLowerCase();
-      const staffId = uid('staf').slice(0, 128);
-      await p.query(
-        `INSERT INTO staff (id, workspace_id, name, email, role, job_title)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [staffId, workspaceId, String(name).trim().slice(0, 100), cleanEmail,
-          role === 'supervisor' ? 'supervisor' : 'staff', String(jobTitle || 'Staf Dapur').slice(0, 120)]
-      );
-      // Tambahkan email ke daftar anggota agar bisa mengakses workspace ini.
-      const members = String(access.ws.member_emails || '').split(',').map((x) => x.trim()).filter(Boolean);
-      if (!members.map((m) => m.toLowerCase()).includes(cleanEmail)) {
-        members.push(cleanEmail);
-        await p.query('UPDATE workspaces SET member_emails = ? WHERE id = ?', [members.join(','), workspaceId]);
-      }
-      if (role === 'supervisor') {
-        const sups = String(access.ws.supervisor_emails || '').split(',').map((x) => x.trim()).filter(Boolean);
-        if (!sups.map((m) => m.toLowerCase()).includes(cleanEmail)) {
-          sups.push(cleanEmail);
-          await p.query('UPDATE workspaces SET supervisor_emails = ? WHERE id = ?', [sups.join(','), workspaceId]);
-        }
-      }
-      res.status(201).json({ ok: true, id: staffId });
-    } catch (err) {
-      res.status(500).json({ error: 'Gagal menambah anggota tim.', detail: String(err?.message || err) });
-    }
-  });
-
-  router.patch('/staff/:id', async (req, res) => {
-    const { workspaceId, name, email, role, jobTitle } = req.body ?? {};
-    if (!name || String(name).trim().length < 2) return res.status(400).json({ error: 'Nama minimal 2 karakter.' });
-    if (!isEmail(email)) return res.status(400).json({ error: 'Format email tidak valid.' });
-    try {
-      const access = await loadWorkspace(req.user.id, req.user.email, String(workspaceId || ''));
-      if (access.error) return res.status(access.status).json({ error: access.error });
-      if (!access.isSupervisor) return res.status(403).json({ error: 'Hanya Supervisor yang dapat mengubah anggota tim.' });
-      await getPool().query(
-        `UPDATE staff SET name = ?, email = ?, role = ?, job_title = ?
-          WHERE id = ? AND workspace_id = ?`,
-        [String(name).trim().slice(0, 100), String(email).trim().toLowerCase(),
-          role === 'supervisor' ? 'supervisor' : 'staff',
-          String(jobTitle || 'Staf Dapur').slice(0, 120), req.params.id, workspaceId]
-      );
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Gagal memperbarui anggota tim.', detail: String(err?.message || err) });
-    }
-  });
-
-  router.delete('/staff/:id', async (req, res) => {
-    const workspaceId = String(req.query.workspaceId || '');
-    try {
-      const access = await loadWorkspace(req.user.id, req.user.email, workspaceId);
-      if (access.error) return res.status(access.status).json({ error: access.error });
-      if (!access.isSupervisor) return res.status(403).json({ error: 'Hanya Supervisor yang dapat menghapus anggota tim.' });
-      const p = getPool();
-      const [rows] = await p.query('SELECT email FROM staff WHERE id = ? AND workspace_id = ? LIMIT 1', [req.params.id, workspaceId]);
-      await p.query('DELETE FROM staff WHERE id = ? AND workspace_id = ?', [req.params.id, workspaceId]);
-      if (rows.length > 0 && rows[0].email.toLowerCase() !== String(access.ws.owner_email).toLowerCase()) {
-        const members = String(access.ws.member_emails || '')
-          .split(',').map((x) => x.trim()).filter(Boolean)
-          .filter((m) => m.toLowerCase() !== rows[0].email.toLowerCase());
-        await p.query('UPDATE workspaces SET member_emails = ? WHERE id = ?', [members.join(','), workspaceId]);
-      }
-      res.json({ ok: true });
-    } catch (err) {
-      res.status(500).json({ error: 'Gagal menghapus anggota tim.', detail: String(err?.message || err) });
-    }
-  });
+  registerStaffAccounts(router, ctx);
 
   // ---------- Jadwal shift ----------
   router.post('/assignments', async (req, res) => {

@@ -48,6 +48,8 @@ export const TeamManagementPage: React.FC = () => {
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [jobTitle, setJobTitle] = useState('Koki');
   const [role, setRole] = useState<UserRole>('staff');
   const [formError, setFormError] = useState('');
@@ -65,15 +67,19 @@ export const TeamManagementPage: React.FC = () => {
     setEditingMemberId(null);
     setName('');
     setEmail('');
+    setUsername('');
+    setPassword('');
     setJobTitle('Koki');
     setRole('staff');
     setFormError('');
   };
 
   const startEdit = (member: UserAccount) => {
-    setEditingMemberId(member.id);
+    setEditingMemberId(member.staffId || member.id);
     setName(member.name);
     setEmail(member.email);
+    setUsername(member.username || '');
+    setPassword('');
     setJobTitle(member.jobTitle);
     setRole(member.role);
     setFormError('');
@@ -130,8 +136,8 @@ export const TeamManagementPage: React.FC = () => {
     setSubmitting(true);
     try {
       const res = editingMemberId
-        ? await updateStaffMember(editingMemberId, { name, email, role, jobTitle })
-        : await addStaffMember({ name, email, role, jobTitle });
+        ? await updateStaffMember(editingMemberId, { name, email, role, jobTitle, ...(username.trim() ? { username: username.trim() } : {}), ...(password ? { password } : {}) })
+        : await addStaffMember({ name, email, role, jobTitle, username: username.trim(), password });
       if (!res.ok) {
         setFormError(res.message);
         return;
@@ -143,7 +149,7 @@ export const TeamManagementPage: React.FC = () => {
   };
 
   const handleRemove = async (member: UserAccount) => {
-    const res = await removeStaffMember(member.id);
+    const res = await removeStaffMember(member.staffId || member.id);
     if (!res.ok) {
       setFormError(res.message);
     }
@@ -222,7 +228,7 @@ export const TeamManagementPage: React.FC = () => {
           </p>
           <p className="text-xs text-[var(--kl-ink-sub)] leading-relaxed">
             Staf operasional (<strong>Kasir</strong>, <strong>Koki</strong>, dan{' '}
-            <strong>Support</strong>) cukup login dengan email Google yang Anda daftarkan di sini.
+            <strong>Support</strong>) login dengan username dan password yang Supervisor buat di sini.
             Mereka otomatis masuk sesuai posisi dan dapur yang ditentukan—tidak dapat mengubah peran
             menjadi Supervisor, dan hanya melihat fitur kebersihan jika ditunjuk sebagai{' '}
             <strong>PIC Shift</strong>.
@@ -398,23 +404,32 @@ export const TeamManagementPage: React.FC = () => {
 
           <div className="space-y-1.5">
             <label htmlFor="member-email" className="block text-sm font-medium text-[var(--kl-ink)]">
-              Email Akun Google
+              Email (opsional)
             </label>
             <input
               id="member-email"
               type="email"
+              readOnly={Boolean(editingMemberId)}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="nama@gmail.com"
               className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--kl-border-strong)] bg-white text-sm text-[var(--kl-ink)]"
             />
             <p className="text-xs text-[var(--kl-ink-muted)]">
-              {workspaces.length > 1
-                ? `Jika staf bekerja di lebih dari satu dapur (${workspaces.map((w) => w.kitchenName).join(' & ')}), daftarkan emailnya di masing-masing dapur.`
-                : `Email Google ini digunakan staf untuk masuk ke ${state.kitchenName}.`}
+              Email tidak diperlukan untuk login staf. Berikan username dan password kepada staf secara pribadi.
             </p>
           </div>
 
+          <div className="space-y-1.5">
+            <label htmlFor="member-username" className="block text-sm font-medium text-[var(--kl-ink)]">Username</label>
+            <input id="member-username" type="text" autoComplete="off" autoCapitalize="none" spellCheck={false} required={!editingMemberId} minLength={3} maxLength={32} pattern="[a-zA-Z0-9][a-zA-Z0-9._\-]{2,31}" value={username} onChange={e => setUsername(e.target.value)} placeholder="Contoh: budi.koki" className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--kl-border-strong)]"/>
+            <p className="text-xs text-[var(--kl-ink-muted)]">3–32 karakter: huruf, angka, titik, garis bawah, tanda hubung.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="member-password" className="block text-sm font-medium text-[var(--kl-ink)]">{editingMemberId ? 'Password baru (opsional)' : 'Password'}</label>
+            <input id="member-password" type="password" autoComplete="new-password" required={!editingMemberId} minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--kl-border-strong)]"/>
+            <p className="text-xs text-[var(--kl-ink-muted)]">{editingMemberId ? 'Kosongkan untuk mempertahankan password. Mengganti password mengakhiri sesi akun.' : 'Minimal 8 karakter. Password tidak ditampilkan kembali setelah disimpan.'}</p>
+          </div>
           <div className="space-y-2">
             <label htmlFor="member-job" className="block text-sm font-medium text-[var(--kl-ink)]">
               Jabatan / Posisi Operasional
@@ -547,7 +562,7 @@ export const TeamManagementPage: React.FC = () => {
                         className="w-3.5 h-3.5 text-[var(--kl-ink-muted)] shrink-0"
                         aria-hidden="true"
                       />
-                      <span className="truncate">{member.email}</span>
+                      <span className="truncate">{member.username ? `Username: ${member.username}` : member.email}</span>
                     </p>
                   </div>
 
