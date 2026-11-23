@@ -1,6 +1,7 @@
 import express from 'express';
 import mysql from 'mysql2/promise';
 import crypto from 'node:crypto';
+import { registerExtraRoutes } from './routes-extra.js';
 
 /**
  * KitchenLog — Backend API (MySQL)
@@ -597,6 +598,8 @@ app.get('/api/photos/:id', requireAuth, async (req, res) => {
 });
 
 // 404 JSON untuk rute /api yang tidak dikenal
+registerExtraRoutes(app, { getPool, requireAuth, loadWorkspace, uid, wibNow, isEmail });
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.' }));
 
 app.listen(PORT, '0.0.0.0', () => {

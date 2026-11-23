@@ -15,7 +15,10 @@
     "dev:demo": "tsx server/dev.ts",
     "verify:auth": "tsx scripts/verify-auth-validation.ts",
     "verify:all": "npm run verify:handover && npm run verify:auth",
-    "start:api": "node server/index.js"
+    "start:api": "node server/index.js",
+    "api": "node server/index.js",
+    "dev:firebase": "tsx server/dev.ts",
+    "verify:api": "tsx scripts/verify-api.ts"
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",

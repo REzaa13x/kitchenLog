@@ -3,18 +3,21 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { KitchenProvider } from './storage/kitchenStore';
+import { MysqlKitchenProvider } from './storage/mysqlStore';
 
 /**
- * Titik masuk MODE NORMAL (Firebase).
+ * Titik masuk aplikasi (mode MySQL).
  *
- * Memakai Firebase Auth + Firestore. Tidak ada yang berubah dari sebelumnya;
- * provider hanya dipindahkan ke sini agar mode demo bisa memakai provider lain.
+ * Memakai API sendiri + database MySQL, bukan Firebase. Login memakai
+ * email + password, data disimpan di MySQL yang bisa dibuka di phpMyAdmin.
+ *
+ * Firebase masih tersedia lewat src/main-firebase.tsx bila diperlukan
+ * sebagai pembanding (npm run dev:firebase).
  */
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>
-    <KitchenProvider>
+    <MysqlKitchenProvider>
       <App />
-    </KitchenProvider>
+    </MysqlKitchenProvider>
   </ErrorBoundary>
 );
