@@ -8,6 +8,8 @@ export interface UserAccount {
   email: string;
   role: UserRole;
   jobTitle: string;
+  /** Nomor telepon (opsional, tersimpan sebagai data profil). */
+  phone?: string;
 }
 
 export interface ShiftAssignment {

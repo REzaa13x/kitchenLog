@@ -65,6 +65,14 @@ export interface KitchenContextValue {
   canDeleteActiveWorkspace: boolean;
   showToast: (msg: string) => void;
   signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (payload: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+  }) => Promise<ActionResult>;
+  sendResetPassword: (email: string) => Promise<ActionResult>;
   signOutGoogle: () => Promise<void>;
   switchWorkspace: (workspaceId: string) => void;
   recheckWorkspaceAccess: () => Promise<void>;

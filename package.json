@@ -12,7 +12,9 @@
     "lint": "tsc --noEmit",
     "lint:rules": "eslint firestore.rules",
     "verify:handover": "tsx scripts/verify-handover-summary.ts && tsx scripts/verify-handover-component.tsx",
-    "dev:demo": "tsx server.ts"
+    "dev:demo": "tsx server.ts",
+    "verify:auth": "tsx scripts/verify-auth-validation.ts",
+    "verify:all": "npm run verify:handover && npm run verify:auth"
   },
   "dependencies": {
     "@firebase/eslint-plugin-security-rules": "^0.0.2",

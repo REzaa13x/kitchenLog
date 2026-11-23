@@ -411,6 +411,17 @@ export const DemoKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ c
     signInWithGoogle: async () => {
       showToast('Mode demo: login tidak diperlukan.');
     },
+    signInWithEmail: async () => {
+      showToast('Mode demo: login tidak diperlukan.');
+    },
+    signUpWithEmail: async () => ({
+      ok: false,
+      message: 'Mode demo: pendaftaran tidak tersedia. Jalankan mode Firebase untuk mendaftar.',
+    }),
+    sendResetPassword: async () => ({
+      ok: false,
+      message: 'Mode demo: atur ulang password tidak tersedia.',
+    }),
     signOutGoogle: async () => {
       showToast('Mode demo: keluar dinonaktifkan. Muat ulang halaman untuk mengatur ulang data.');
     },

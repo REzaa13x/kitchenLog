@@ -1,8 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
 import {
@@ -49,6 +53,7 @@ import {
   SHIFT_META,
 } from '../utils/wibTime';
 import { setActivePhotoSyncContext } from './photoDb';
+import { mapAuthError } from '../utils/authValidation';
 import {
   KitchenContext,
   useKitchen,
@@ -66,6 +71,8 @@ export type { ActionResult, KitchenContextValue, WorkspaceAccessStatus, Workspac
 
 const BOOTSTRAP_ADMIN_EMAIL = 'bagusazhareko@gmail.com';
 const ACTIVE_WORKSPACE_KEY = 'kitchenlog_active_workspace_v1';
+/** Nomor telepon sementara selama proses pendaftaran (dipakai sekali saat profil dibuat). */
+const PENDING_PHONE_KEY = 'kitchenlog_pending_phone_v1';
 const DEFAULT_KITCHENS: Array<{ id: string; name: string }> = [
   { id: 'dapur-coworking', name: 'Dapur Coworking' },
   { id: 'dapur-container', name: 'Dapur Container' },
@@ -237,7 +244,9 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const isAdminEmail = userEmail === BOOTSTRAP_ADMIN_EMAIL;
       if (!userSnap.exists()) {
         try {
-          await setDoc(userRef, {
+          // Nomor telepon opsional: diambil dari metadata pendaftaran bila ada.
+          const pendingPhone = localStorage.getItem(PENDING_PHONE_KEY);
+          const profile: Record<string, unknown> = {
             uid: user.uid,
             email: (userEmail || 'user@kitchenlog.app').slice(0, 200),
             displayName: (user.displayName || 'Pengguna KitchenLog').slice(0, 120),
@@ -245,7 +254,12 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
             role: isAdminEmail ? 'supervisor' : 'staff',
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
-          });
+          };
+          if (pendingPhone && /^0\d{8,15}$/.test(pendingPhone)) {
+            profile.phone = pendingPhone;
+          }
+          await setDoc(userRef, profile);
+          if (pendingPhone) localStorage.removeItem(PENDING_PHONE_KEY);
         } catch (err) {
           handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}`);
         }
@@ -274,6 +288,22 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
         foundList = await fetchUserWorkspaces();
       } catch (err) {
         handleFirestoreError(err, OperationType.LIST, 'workspaces');
+      }
+
+      // 2b. Pendaftar mandiri (email/password) yang belum tergabung di dapur mana pun
+      //     mendapat ruang kerja pribadi agar tetap bisa memakai aplikasi tanpa
+      //     melihat data dapur lain. Isinya hanya miliknya sendiri.
+      if (!isAdminEmail && foundList.length === 0) {
+        const personalId = `ws-${user.uid}`.slice(0, 128);
+        const personalName =
+          (user.displayName || userEmail.split('@')[0] || 'Dapur').slice(0, 100) + ' (Pribadi)';
+        try {
+          await bootstrapWorkspaceInFirestore(personalId, user, personalName);
+          foundList = await fetchUserWorkspaces();
+        } catch (err) {
+          // Jika gagal (mis. aturan menolak), biarkan alur lanjut ke status 'uninvited'.
+          console.warn('Gagal menyiapkan ruang kerja pribadi:', err);
+        }
       }
 
       // 3. Ensure Dapur Coworking & Dapur Container exist only on first-time setup
@@ -556,6 +586,64 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ? err.message
           : 'Gagal masuk dengan Google. Pastikan pop-up diizinkan.';
       setAuthError(msg);
+    }
+  };
+
+  /**
+   * Masuk dengan email + password.
+   * Melempar error agar formulir bisa menampilkan pesan spesifik per kolom.
+   */
+  const signInWithEmail = async (email: string, password: string) => {
+    setAuthError(null);
+    await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+    showToast('Berhasil masuk.');
+  };
+
+  /**
+   * Daftar akun baru dengan email + password + nomor telepon.
+   *
+   * Nomor telepon hanya disimpan sebagai data profil (bukan untuk verifikasi SMS).
+   * Pendaftar tanpa undangan akan mendapat ruang kerja pribadi sehingga tidak
+   * dapat melihat data dapur lain (lihat resolveWorkspaceForUser langkah 2b).
+   */
+  const signUpWithEmail = async (payload: {
+    name: string;
+    email: string;
+    phone: string;
+    password: string;
+  }): Promise<ActionResult> => {
+    setAuthError(null);
+    const email = payload.email.trim().toLowerCase();
+    const name = payload.name.trim().slice(0, 100);
+
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, payload.password);
+      await updateProfile(cred.user, { displayName: name });
+
+      // Nomor telepon dipakai sekali saat profil Firestore dibuat.
+      localStorage.setItem(PENDING_PHONE_KEY, payload.phone);
+
+      // Segarkan agar displayName ikut terbaca oleh onAuthStateChanged.
+      await cred.user.reload();
+
+      showToast('Akun berhasil dibuat. Selamat datang di KitchenLog!');
+      return { ok: true, message: 'Akun berhasil dibuat.' };
+    } catch (err) {
+      localStorage.removeItem(PENDING_PHONE_KEY);
+      return { ok: false, message: mapAuthError(err) };
+    }
+  };
+
+  /** Kirim email atur ulang password. */
+  const sendResetPassword = async (email: string): Promise<ActionResult> => {
+    try {
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+      return {
+        ok: true,
+        message: 'Email atur ulang password sudah dikirim. Periksa kotak masuk (dan folder spam).',
+      };
+    } catch (err) {
+      return { ok: false, message: mapAuthError(err) };
     }
   };
 
@@ -1394,6 +1482,9 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
         canDeleteActiveWorkspace,
         showToast,
         signInWithGoogle,
+        signInWithEmail,
+        signUpWithEmail,
+        sendResetPassword,
         signOutGoogle,
         switchWorkspace,
         recheckWorkspaceAccess,
