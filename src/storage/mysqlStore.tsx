@@ -154,8 +154,8 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
   };
 
   /** Muat daftar workspace + data workspace aktif. */
-  const loadWorkspaceData = async (wsId: string, tkn: string) => {
-    setWorkspaceLoading(true);
+  const loadWorkspaceData = async (wsId: string, tkn: string, background = false) => {
+    if (!background) setWorkspaceLoading(true);
     try {
       const data = await call<KitchenLogState & { kitchenName: string }>(
         `/state?workspaceId=${encodeURIComponent(wsId)}`,
@@ -320,7 +320,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const wrap = async (fn: () => Promise<void>, successMsg: string): Promise<ActionResult> => {
     try {
       await fn();
-      if (token && activeWorkspaceId) await loadWorkspaceData(activeWorkspaceId, token);
+      if (token && activeWorkspaceId) await loadWorkspaceData(activeWorkspaceId, token, true);
       showToast(successMsg);
       return { ok: true, message: successMsg };
     } catch (err) {
