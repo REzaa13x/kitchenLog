@@ -13,9 +13,9 @@ const schema = await fs.readFile(new URL('../database/dapurops-schema.sql', impo
 for (const sql of schema.replace(/CREATE DATABASE IF NOT EXISTS[\s\S]*?;/, '').replace(/USE `ngola_dapurops`;/, '').split(';')) if (sql.trim()) await admin.query(sql);
 try { const migration = await fs.readFile(new URL('../database/migrations/20261123-staff-accounts.sql', import.meta.url),'utf8'); for (const sql of migration.split(';')) if(sql.trim()) await admin.query(sql); } catch(e) { if(e.code !== 'ENOENT') throw e; }
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261123-attendance-cleanliness.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
-const source = (await fs.readFile(new URL('../server/index.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace(/app\.listen\(PORT,[\s\S]*$/, 'return { app, loadWorkspace, hashPassword };');
+const source = (await fs.readFile(new URL('../server/index.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace(/app\.listen\(PORT,[\s\S]*$/, 'return { app, loadWorkspace, hashPassword, validAttendanceEvidence };');
 const db = mysql.createPool({host:'127.0.0.1',user:'root',database,...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u=>[['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}),dateStrings:true});
-const { app, hashPassword, loadWorkspace } = new Function('express','mysql','crypto','registerExtraRoutes',source)(express,{createPool:()=>db},crypto,registerExtraRoutes);
+const { app, hashPassword, loadWorkspace, validAttendanceEvidence } = new Function('express','mysql','crypto','registerExtraRoutes',source)(express,{createPool:()=>db},crypto,registerExtraRoutes);
 const server=app.listen(0,'127.0.0.1'); await new Promise(r=>server.once('listening',r));
 const base=`http://127.0.0.1:${server.address().port}/api`;
 async function request(path,body,method='POST',token) { const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:await r.json()}; }
@@ -69,6 +69,22 @@ try {
  const [[stored]]=await admin.query('SELECT check_in_cleanliness,check_out_cleanliness FROM attendance WHERE staff_id=?',[user.id]);
  assert.deepEqual(JSON.parse(stored.check_in_cleanliness),evidence,'database survives device photo storage loss');
  assert.deepEqual(JSON.parse(stored.check_out_cleanliness),outEvidence);
+ await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('legacy','ws','2026-11-24','opening',?,?),('race','ws','2026-11-24','closing',?,?)",[user.id,user.id,created.body.id,created.body.id]);
+ await admin.query("INSERT INTO attendance (id,workspace_id,assignment_id,att_date,shift,staff_id,staff_email,check_in_time,check_in_minutes) VALUES ('legacy-att','ws','legacy','2026-11-24','opening',?,?,'08:00',480)",[created.body.id,user.email]);
+ const legacyState=(await request('/state?workspaceId=ws',undefined,'GET',signed.body.token)).body.attendance.find(a=>a.id==='legacy-att');
+ assert.equal(legacyState.staffId,user.id,'legacy attendance maps staff ID to user');
+ assert.equal(legacyState.checkInCleanliness,null,'pre-migration evidence stays null');
+ const jpegEvidence={...evidence,kitchenPhotoDataUrl:'data:image/jpeg;base64,/9j/2Q=='};
+ assert.equal((await request('/attendance/check-out',{...attendanceBody,assignmentId:'legacy',cleanliness:jpegEvidence},'POST',signed.body.token)).status,200,'legacy staff attendance can check out using canonical user ID');
+ const maxPhoto=Buffer.alloc(2*1024*1024); Buffer.from('89504e470d0a1a0a','hex').copy(maxPhoto);
+ const maxEvidence={...evidence,kitchenPhotoDataUrl:'data:image/png;base64,'+maxPhoto.toString('base64')};
+ // Local MySQL defaults to 1MB packets; production inspected at 64MB. Validate the 2MB boundary without changing shared DB configuration.
+ assert.equal(validAttendanceEvidence({...attendanceBody,cleanliness:maxEvidence}),true,'exactly 2MB decoded accepted');
+ const raced=await Promise.all([1,2].map(()=>request('/attendance/check-in',{...attendanceBody,assignmentId:'race',photoId:'x'.repeat(200),cleanliness:evidence},'POST',signed.body.token)));
+ assert.deepEqual(raced.map(r=>r.status).sort(),[200,409],'concurrent checkin prevents overwrite');
+ const webpEvidence={...evidence,kitchenPhotoDataUrl:'data:image/webp;base64,'+Buffer.from('RIFFxxxxWEBP').toString('base64')};
+ const racedOut=await Promise.all([1,2].map(()=>request('/attendance/check-out',{...attendanceBody,assignmentId:'race',cleanliness:webpEvidence},'POST',signed.body.token)));
+ assert.deepEqual(racedOut.map(r=>r.status).sort(),[200,409],'concurrent checkout accepts WEBP, prevents overwrite');
  assert.match(user.password_hash,/^scrypt\$/); assert.notEqual(user.password_hash,account.password);
  const [[ws]]=await admin.query("SELECT * FROM workspaces WHERE id='ws'"); assert.ok(ws.member_emails.split(',').includes(user.email));
  assert.equal((await request('/staff',{...account,username:'bypass',role:'supervisor'},'POST',signed.body.token)).status,403,'staff cannot create supervisors');
