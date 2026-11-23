@@ -30,7 +30,7 @@ export const LoginPage: React.FC = () => {
     <section className="w-full max-w-md rounded-2xl border border-[#E5DFD0] bg-white p-6 sm:p-8 space-y-6 shadow-sm">
       <div className="flex items-center gap-3 font-bold text-[#1B4332]"><ChefHat aria-hidden="true" className="h-8 w-8"/><span>DapurOps · Ngolab</span></div>
       <div className="space-y-2"><h1 className="text-2xl font-bold">{uninvited ? 'Akses dapur belum tersedia' : 'Masuk ke Operasional Dapur'}</h1>
-        <p className="text-sm leading-relaxed text-[#55625A]">{uninvited ? 'Hubungi Supervisor untuk mendapatkan akses dapur yang sesuai.' : 'Gunakan username dan password yang diberikan Supervisor.'}</p></div>
+        <p className="text-sm leading-relaxed text-[#55625A]">{uninvited ? 'Hubungi Admin untuk mendapatkan akses dapur yang sesuai.' : 'Gunakan username dan password yang diberikan Admin.'}</p></div>
       {(error || authError) && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error || authError}</p>}
       {uninvited ? <div className="flex gap-3">
         <button type="button" disabled={busy} onClick={recheck} className="min-h-[48px] rounded-xl bg-[#1B4332] px-4 text-white disabled:opacity-60">Periksa Akses</button>
@@ -43,7 +43,7 @@ export const LoginPage: React.FC = () => {
             <button type="button" aria-label={visible ? 'Sembunyikan password' : 'Tampilkan password'} aria-pressed={visible} onClick={() => setVisible(!visible)} className="absolute right-1 top-0 min-h-[48px] min-w-[48px] flex items-center justify-center rounded-xl focus:ring-2 focus:ring-[#1B4332]">{visible ? <EyeOff aria-hidden="true" size={20}/> : <Eye aria-hidden="true" size={20}/>}</button></div></div>
         <button type="submit" disabled={busy} className="w-full min-h-[48px] rounded-xl bg-[#1B4332] text-white font-semibold hover:bg-[#255A43] disabled:opacity-60">{busy ? 'Memproses…' : 'Masuk'}</button>
       </form>}
-      <p className="text-xs leading-relaxed text-[#55625A] rounded-xl bg-[#FAF7F0] p-3">Akun hanya dibuat oleh Supervisor melalui menu Tim &amp; Hak Akses. Lupa password? Hubungi Supervisor untuk mengatur ulang.</p>
+      <p className="text-xs leading-relaxed text-[#55625A] rounded-xl bg-[#FAF7F0] p-3">Akun hanya dibuat oleh Admin melalui menu Tim &amp; Hak Akses. Lupa password? Hubungi Admin untuk mengatur ulang.</p>
     </section>
   </main>;
 };

@@ -305,7 +305,7 @@ function KitchenShell() {
                   {currentUser.name}
                 </p>
                 <p className="text-xs font-semibold text-[var(--kl-accent)] truncate">
-                  {currentUser.role === 'supervisor' ? 'Supervisor' : 'Staf Dapur'} ·{' '}
+                  {currentUser.role === 'supervisor' ? 'Admin' : 'Staf Dapur'} ·{' '}
                   {currentUser.jobTitle}
                 </p>
                 <p className="text-[11px] text-[var(--kl-ink-muted)] truncate">

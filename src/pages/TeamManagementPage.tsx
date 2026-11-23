@@ -16,7 +16,7 @@ import { useKitchen } from '../storage/kitchenContext';
 import { UserAccount, UserRole } from '../types/kitchen';
 import { resolveKitchenTheme } from '../utils/kitchenTheme';
 
-const POSITION_PRESETS = ['Kasir', 'Koki', 'Support', 'Supervisor Operasional'];
+const POSITION_PRESETS = ['Kasir', 'Koki', 'Support'];
 
 export const TeamManagementPage: React.FC = () => {
   const {
@@ -81,7 +81,7 @@ export const TeamManagementPage: React.FC = () => {
     setUsername(member.username || '');
     setPassword('');
     setJobTitle(member.jobTitle);
-    setRole(member.role);
+    setRole('staff');
     setFormError('');
   };
 
@@ -224,13 +224,13 @@ export const TeamManagementPage: React.FC = () => {
         <Info className="w-4 h-4 text-[var(--kl-accent)] shrink-0 mt-0.5" aria-hidden="true" />
         <div className="space-y-1">
           <p className="font-semibold text-[var(--kl-accent-deep)]">
-            Pengaturan Peran Akses &amp; Posisi Dapur Dikelola oleh Supervisor
+            Pengaturan Peran Akses &amp; Posisi Dapur Dikelola oleh Admin
           </p>
           <p className="text-xs text-[var(--kl-ink-sub)] leading-relaxed">
             Staf operasional (<strong>Kasir</strong>, <strong>Koki</strong>, dan{' '}
-            <strong>Support</strong>) login dengan username dan password yang Supervisor buat di sini.
+            <strong>Support</strong>) login dengan username dan password yang Admin buat di sini.
             Mereka otomatis masuk sesuai posisi dan dapur yang ditentukan—tidak dapat mengubah peran
-            menjadi Supervisor, dan hanya melihat fitur kebersihan jika ditunjuk sebagai{' '}
+            menjadi Admin, dan hanya melihat fitur kebersihan jika ditunjuk sebagai{' '}
             <strong>PIC Shift</strong>.
           </p>
         </div>
@@ -441,11 +441,7 @@ export const TeamManagementPage: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setJobTitle(preset);
-                    if (preset === 'Supervisor Operasional') {
-                      setRole('supervisor');
-                    } else if (role === 'supervisor' && !editingMemberId) {
-                      setRole('staff');
-                    }
+                    setRole('staff');
                   }}
                   className={`min-h-[34px] px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
                     jobTitle === preset
@@ -467,30 +463,7 @@ export const TeamManagementPage: React.FC = () => {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-[var(--kl-ink)]">Peran Akses Sistem</label>
-            <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-[var(--kl-track)] border border-[var(--kl-border)]">
-              {(
-                [
-                  { value: 'staff', label: 'Staf / PIC' },
-                  { value: 'supervisor', label: 'Supervisor' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setRole(opt.value)}
-                  className={`min-h-[42px] rounded-lg text-sm font-semibold transition-colors ${
-                    role === opt.value
-                      ? 'bg-[var(--kl-accent)] text-white'
-                      : 'text-[var(--kl-ink-sub)] hover:bg-white/70'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="text-xs text-[var(--kl-ink-muted)]">Semua anggota baru memiliki akses Staf. Hanya admin@gmail.com memiliki akses Admin.</p>
 
           {formError && (
             <p className="text-xs font-medium text-[#B91C1C]" role="alert">
@@ -546,7 +519,7 @@ export const TeamManagementPage: React.FC = () => {
                         {member.role === 'supervisor' && (
                           <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
                         )}
-                        {member.role === 'supervisor' ? 'Supervisor' : 'Staf'}
+                        {member.role === 'supervisor' ? 'Admin' : 'Staf'}
                       </span>
                       {isSelf && (
                         <span className="text-xs font-medium text-[var(--kl-accent)]">

@@ -245,7 +245,7 @@ export const ItemReportsPage: React.FC = () => {
               {isSupervisor && activeReport.status !== 'Selesai' && (
                 <div className="border-t border-[var(--kl-border)] pt-4 space-y-3">
                   <h3 className="text-sm font-bold text-[var(--kl-ink)]">
-                    Tindak Lanjut Supervisor
+                    Tindak Lanjut Admin
                   </h3>
 
                   <div className="space-y-1.5">

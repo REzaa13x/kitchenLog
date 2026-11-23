@@ -215,7 +215,7 @@ export const TodayPage: React.FC<TodayPageProps> = ({
 
                   {record?.supervisorNote && (
                     <p className="text-xs text-[var(--kl-ink-sub)] bg-[var(--kl-soft)] rounded-lg px-3 py-2">
-                      Catatan Supervisor: {record.supervisorNote}
+                      Catatan Admin: {record.supervisorNote}
                     </p>
                   )}
 

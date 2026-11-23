@@ -12,6 +12,7 @@ export function registerExtraRoutes(app, ctx) {
 
   // ---------- Workspace ----------
   router.post('/workspaces', async (req, res) => {
+    if (req.user.role !== 'supervisor') return res.status(403).json({ error: 'Hanya Admin yang dapat membuat dapur.' });
 
     const { kitchenName } = req.body ?? {};
     const cleanName = String(kitchenName || '').trim().slice(0, 120);
@@ -56,7 +57,7 @@ export function registerExtraRoutes(app, ctx) {
     try {
       const access = await loadWorkspace(req.user.id, req.user.email, req.params.id);
       if (access.error) return res.status(access.status).json({ error: access.error });
-      if (access.ws.owner_id !== req.user.id) {
+      if (!access.isSupervisor) {
         return res.status(403).json({ error: 'Hanya pemilik ruang kerja yang dapat menghapusnya.' });
       }
       await getPool().query('DELETE FROM workspaces WHERE id = ?', [req.params.id]);

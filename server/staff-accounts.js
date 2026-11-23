@@ -18,7 +18,8 @@ export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, has
         if ((mode === 'create' || hasUsername) && (!username || !/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username))) throw fail(400, 'Username harus 3–32 karakter (huruf, angka, titik, garis bawah, tanda hubung).');
         if ((mode === 'create' || hasPassword) && (typeof b.password !== 'string' || b.password.length < 8 || b.password.length > 128)) throw fail(400, 'Password harus 8–128 karakter.');
         if (typeof b.name !== 'string' || b.name.trim().length < 2 || b.name.trim().length > 100) throw fail(400, 'Nama harus 2–100 karakter.');
-        if (b.role !== undefined && !['staff', 'supervisor'].includes(b.role)) throw fail(400, 'Peran tidak valid.');
+        if (b.role === 'supervisor') throw fail(403, 'Admin tidak dapat dibuat melalui pengelolaan staf.');
+        if (b.role !== undefined && b.role !== 'staff') throw fail(400, 'Peran tidak valid.');
         if (b.jobTitle !== undefined && (typeof b.jobTitle !== 'string' || b.jobTitle.length > 120)) throw fail(400, 'Jabatan tidak valid.');
         if (b.email !== undefined && b.email !== '' && (typeof b.email !== 'string' || b.email.length > 200 || !isEmail(b.email))) throw fail(400, 'Email tidak valid.');
       }
@@ -27,20 +28,20 @@ export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, has
       const [[ws]] = await c.query('SELECT * FROM workspaces WHERE id = ? FOR UPDATE', [workspaceId]);
       if (!ws) throw fail(404, 'Ruang kerja tidak ditemukan.');
       // Recheck authorization under lock, including exact CSV entries.
-      if (ws.owner_id !== req.user.id && !(list(ws.member_emails).includes(req.user.email.toLowerCase()) && list(ws.supervisor_emails).includes(req.user.email.toLowerCase()))) throw fail(403, 'Akses ditolak.');
+      if (req.user.id !== 'u_supervisor_75d4f29fee493805' || req.user.email.toLowerCase() !== 'admin@gmail.com' || !(ws.owner_id === req.user.id || list(ws.member_emails).includes(req.user.email.toLowerCase()))) throw fail(403, 'Akses ditolak.');
       let staff, user;
       if (mode !== 'create') {
         const [[row]] = await c.query('SELECT * FROM staff WHERE id = ? AND workspace_id = ? FOR UPDATE', [req.params.id, workspaceId]);
         staff = row;
         if (!staff) throw fail(404, 'Anggota tidak ditemukan.');
-        if (staff.email.toLowerCase() === ws.owner_email.toLowerCase()) throw fail(403, 'Akun pemilik tidak dapat diubah di sini.');
+        if (staff.email.toLowerCase() === 'admin@gmail.com') throw fail(403, 'Akun Admin tidak dapat diubah di sini.');
         const [[account]] = await c.query('SELECT * FROM users WHERE email = ? FOR UPDATE', [staff.email]);
         user = account;
       }
       let email = staff?.email;
       let id = staff?.id;
       if (mode !== 'delete') {
-        const role = b.role ?? staff?.role ?? 'staff';
+        const role = 'staff';
         const job = b.jobTitle ?? staff?.job_title ?? (role === 'supervisor' ? 'Supervisor Operasional' : 'Staf Dapur');
         const name = b.name.trim();
         if (mode === 'create') {

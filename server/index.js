@@ -16,6 +16,7 @@ import { registerExtraRoutes } from './routes-extra.js';
  */
 
 const PORT = Number(process.env.PORT) || 5055;
+const isAdmin = (id, email) => id === 'u_supervisor_75d4f29fee493805' && String(email).toLowerCase() === 'admin@gmail.com';
 
 // Panel menyediakan DATABASE_URL (format mysql://user:pass@host:port/db).
 // Variabel terpisah juga didukung agar mudah diuji lokal.
@@ -184,7 +185,7 @@ async function requireAuth(req, res, next) {
       email: session.email,
       name: session.name,
       phone: session.phone,
-      role: session.role,
+      role: isAdmin(session.id, session.email) ? 'supervisor' : 'staff',
       jobTitle: session.job_title,
       emailVerified: Boolean(session.email_verified),
     };
@@ -209,7 +210,7 @@ async function loadWorkspace(userId, email, workspaceId) {
     .filter(Boolean);
   const isMember = ws.owner_id === userId || members.includes(String(email).toLowerCase());
   if (!isMember) return { error: 'Anda bukan anggota ruang kerja ini.', status: 403 };
-  return { ws, isSupervisor: ws.owner_id === userId || members.includes(String(email).toLowerCase()) && String(ws.supervisor_emails || '').split(',').map(s => s.trim().toLowerCase()).includes(String(email).toLowerCase()) };
+  return { ws, isSupervisor: isAdmin(userId, email) };
 }
 
 // ---------- Auth ----------
@@ -242,7 +243,7 @@ app.post('/api/auth/login', async (req, res) => {
   if (!isEmail(clean) && !/^[a-z0-9][a-z0-9._-]{2,31}$/.test(clean)) return res.status(400).json({ error: 'Username tidak valid.' });
   try {
     const pool = getPool();
-    const [rows] = await pool.query(isEmail(clean) ? "SELECT u.* FROM users u WHERE u.email = ? AND (u.role = 'supervisor' OR EXISTS (SELECT 1 FROM workspaces w WHERE w.owner_id = u.id OR (FIND_IN_SET(u.email, REPLACE(w.member_emails, ' ', '')) > 0 AND FIND_IN_SET(u.email, REPLACE(w.supervisor_emails, ' ', '')) > 0))) LIMIT 1" : 'SELECT * FROM users WHERE username = ? LIMIT 1', [clean]);
+    const [rows] = await pool.query(isEmail(clean) ? 'SELECT * FROM users WHERE email = ? LIMIT 1' : 'SELECT * FROM users WHERE username = ? LIMIT 1', [clean]);
     if (rows.length === 0) return res.status(401).json({ error: 'Username atau password salah.' });
     const user = rows[0];
     if (!verifyPassword(String(password), user.password_hash)) {
@@ -257,7 +258,7 @@ app.post('/api/auth/login', async (req, res) => {
       token,
       user: {
         id: user.id, username: user.username, email: user.email, name: user.name, phone: user.phone,
-        role: user.role, jobTitle: user.job_title, emailVerified: Boolean(user.email_verified),
+        role: isAdmin(user.id, user.email) ? 'supervisor' : 'staff', jobTitle: user.job_title, emailVerified: Boolean(user.email_verified),
       },
     });
   } catch (err) {
@@ -330,7 +331,7 @@ app.get('/api/state', requireAuth, async (req, res) => {
         id: userByEmail.get(String(s.email).toLowerCase()) || s.id,
         staffId: s.id,
         username: usernameByEmail.get(String(s.email).toLowerCase()) || null,
-        name: s.name, email: s.email, role: s.role, jobTitle: s.job_title,
+        name: s.name, email: s.email, role: isAdmin(userByEmail.get(String(s.email).toLowerCase()), s.email) ? 'supervisor' : 'staff', jobTitle: s.job_title,
       })),
       assignments: asgRows.map((a) => ({
         id: a.id,

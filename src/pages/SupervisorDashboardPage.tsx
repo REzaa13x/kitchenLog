@@ -97,7 +97,7 @@ export const SupervisorDashboardPage: React.FC<SupervisorDashboardPageProps> = (
             </p>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--kl-ink)]">
-            Dashboard Supervisor
+            Dashboard Admin
           </h1>
           <p className="text-sm text-[var(--kl-ink-muted)]">
             Ringkasan kehadiran staf, status laporan kebersihan, dan tindak lanjut barang hari ini.
@@ -484,7 +484,7 @@ export const SupervisorDashboardPage: React.FC<SupervisorDashboardPageProps> = (
 
             <div className="space-y-1.5">
               <label htmlFor="absence-note" className="block text-sm font-medium text-[var(--kl-ink)]">
-                Catatan Supervisor (Opsional)
+                Catatan Admin (Opsional)
               </label>
               <textarea
                 id="absence-note"

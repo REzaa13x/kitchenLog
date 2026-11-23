@@ -155,7 +155,7 @@ export const SchedulePage: React.FC = () => {
                     <div>
                       <p className="text-sm font-semibold text-[var(--kl-ink)]">
                         {staff.name}
-                        {staff.role === 'supervisor' ? ' (Supervisor)' : ''}
+                        {staff.role === 'supervisor' ? ' (Admin)' : ''}
                       </p>
                       <p className="text-xs text-[var(--kl-ink-muted)]">{staff.jobTitle}</p>
                     </div>
