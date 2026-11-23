@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+:root,
+:root[data-kitchen-theme="coworking"] {
+  --kl-bg: #FAF7F0;
+  --kl-soft: #F3EFE4;
+  --kl-track: #EFEAE0;
+  --kl-border: #E5DFD0;
+  --kl-border-strong: #D4CEC0;
+  --kl-ink: #1A211D;
+  --kl-ink-sub: #36413B;
+  --kl-ink-muted: #55625A;
+  --kl-accent: #1B4332;
+  --kl-accent-hover: #255A43;
+  --kl-accent-deep: #143627;
+  --kl-tint: #E4EFE8;
+  --kl-tint-border: #C6DEC9;
+  --kl-toast-icon: #A7F3D0;
+}
+
+:root[data-kitchen-theme="container"] {
+  --kl-bg: #F3F6FA;
+  --kl-soft: #E7EEF6;
+  --kl-track: #DEE7F1;
+  --kl-border: #CFDCEB;
+  --kl-border-strong: #B4C6DC;
+  --kl-ink: #141F2E;
+  --kl-ink-sub: #2E3E54;
+  --kl-ink-muted: #4D6078;
+  --kl-accent: #1D4E89;
+  --kl-accent-hover: #245FA3;
+  --kl-accent-deep: #123359;
+  --kl-tint: #E2ECF8;
+  --kl-tint-border: #B7CDE8;
+  --kl-toast-icon: #93C5FD;
+}
+
+:root[data-kitchen-theme="custom"] {
+  --kl-bg: #F2F8F7;
+  --kl-soft: #E5F1EF;
+  --kl-track: #DCECE9;
+  --kl-border: #CBE0DC;
+  --kl-border-strong: #B0CFC9;
+  --kl-ink: #132220;
+  --kl-ink-sub: #2D4541;
+  --kl-ink-muted: #4B6762;
+  --kl-accent: #115E59;
+  --kl-accent-hover: #17736D;
+  --kl-accent-deep: #0C4541;
+  --kl-tint: #DDF1EE;
+  --kl-tint-border: #B2DAD4;
+  --kl-toast-icon: #99F6E4;
+}
+
+@theme {
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-cream-50: #FAF7F0;
+  --color-cream-100: #F3EFE4;
+  --color-cream-200: #E5DFD0;
+  --color-ink-900: #1A211D;
+  --color-ink-700: #36413B;
+  --color-ink-500: #55625A;
+  --color-forest-900: #143627;
+  --color-forest-800: #1B4332;
+  --color-forest-700: #255A43;
+  --color-forest-100: #E4EFE8;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: var(--kl-bg);
+    color: var(--kl-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

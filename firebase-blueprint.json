@@ -1,0 +1,193 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil pengguna Google Sign-In yang terisolasi untuk akun KitchenLog.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["supervisor", "staff"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "role", "createdAt", "updatedAt"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Ruang kerja operasional KitchenLog dengan daftar anggota dan supervisor terotorisasi.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerEmail": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "kitchenName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "memberEmails": { "type": "array" },
+        "supervisorEmails": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "ownerEmail", "kitchenName", "memberEmails", "supervisorEmails", "updatedAt"]
+    },
+    "StaffMember": {
+      "title": "StaffMember",
+      "description": "Anggota tim dapur yang terikat dengan email akun Google masing-masing.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberEmails": { "type": "array" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "role": { "type": "string", "enum": ["staff", "supervisor"] },
+        "jobTitle": { "type": "string", "minLength": 1, "maxLength": 120 }
+      },
+      "required": ["id", "ownerId", "workspaceId", "memberEmails", "name", "email", "role", "jobTitle"]
+    },
+    "ShiftAssignment": {
+      "title": "ShiftAssignment",
+      "description": "Penugasan staf dan penunjukan satu PIC untuk setiap tanggal dan shift.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberEmails": { "type": "array" },
+        "date": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "shift": { "type": "string", "enum": ["opening", "closing"] },
+        "staffIds": { "type": "array" },
+        "picId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "ownerId", "memberEmails", "date", "shift", "staffIds", "picId", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Catatan absensi per penugasan shift dengan jam WIB, foto wajah check-in/check-out, keterlambatan, durasi, atau status supervisor.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberEmails": { "type": "array" },
+        "assignmentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "date": { "type": "string", "minLength": 10, "maxLength": 10 },
+        "shift": { "type": "string", "enum": ["opening", "closing"] },
+        "staffId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "staffEmail": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "checkInTime": { "type": "string", "maxLength": 10 },
+        "checkInMinutes": { "type": "number" },
+        "checkOutTime": { "type": "string", "maxLength": 10 },
+        "checkOutMinutes": { "type": "number" },
+        "lateMinutes": { "type": "number" },
+        "durationMinutes": { "type": "number" },
+        "checkInPhotoId": { "type": "string", "maxLength": 128 },
+        "checkOutPhotoId": { "type": "string", "maxLength": 128 },
+        "supervisorStatus": { "type": "string", "enum": ["Izin", "Sakit", "Alpa"] },
+        "supervisorNote": { "type": "string", "maxLength": 500 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "ownerId", "memberEmails", "assignmentId", "date", "shift", "staffId", "staffEmail", "lateMinutes", "updatedAt"]
+    },
+    "CleanlinessReport": {
+      "title": "CleanlinessReport",
+      "description": "Laporan kebersihan per tanggal dan shift beserta checklist 6 area, foto, catatan serah terima, dan ringkasan serah terima AI terkonfirmasi.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberEmails": { "type": "array" },
+        "date": { "type": "string", "minLength": 10, "maxLength": 10 },
+        "shift": { "type": "string", "enum": ["opening", "closing"] },
+        "picId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "picEmail": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "picName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "submittedAt": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "submittedTimeHHMM": { "type": "string", "minLength": 5, "maxLength": 5 },
+        "areas": { "type": "array" },
+        "generalPhotoId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "handoverNote": { "type": "string", "maxLength": 1500 },
+        "confirmedAiSummary": { "type": "string", "maxLength": 1500 },
+        "aiSummaryConfirmedAt": { "type": "string", "maxLength": 80 },
+        "aiSummaryConfirmedBy": { "type": "string", "maxLength": 120 }
+      },
+      "required": ["id", "ownerId", "memberEmails", "date", "shift", "picId", "picEmail", "picName", "submittedAt", "submittedTimeHHMM", "areas", "generalPhotoId", "handoverNote"]
+    },
+    "ItemReport": {
+      "title": "ItemReport",
+      "description": "Laporan barang rusak atau hilang beserta status tindak lanjut dan hasil penanganan.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberEmails": { "type": "array" },
+        "type": { "type": "string", "enum": ["Barang Rusak", "Barang Hilang"] },
+        "itemName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "quantity": { "type": "integer" },
+        "location": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "lastKnownLocation": { "type": "string", "maxLength": 500 },
+        "discoveredAt": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "photoId": { "type": "string", "maxLength": 128 },
+        "reporterId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "reporterEmail": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "reporterName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "shift": { "type": "string", "enum": ["opening", "closing"] },
+        "date": { "type": "string", "minLength": 10, "maxLength": 10 },
+        "status": { "type": "string", "enum": ["Dilaporkan", "Ditindaklanjuti", "Selesai"] },
+        "resolutionNote": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "ownerId", "memberEmails", "type", "itemName", "quantity", "location", "discoveredAt", "reporterId", "reporterEmail", "reporterName", "shift", "date", "status", "createdAt", "updatedAt"]
+    },
+    "PhotoDoc": {
+      "title": "PhotoDoc",
+      "description": "Foto terkompresi (wajah absensi, kebersihan, atau barang rusak) untuk sinkronisasi antar-perangkat.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberEmails": { "type": "array" },
+        "uploaderEmail": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "source": { "type": "string", "enum": ["camera", "upload"] },
+        "dataUrl": { "type": "string", "minLength": 20, "maxLength": 450000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "ownerId", "memberEmails", "uploaderEmail", "source", "dataUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Profil pengguna terisolasi (PII) hanya dapat diakses pemilik atau admin."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Dokumen induk ruang kerja dapur KitchenLog dengan daftar anggota dan supervisor."
+    },
+    "/workspaces/{workspaceId}/staff/{staffId}": {
+      "schema": { "$ref": "#/entities/StaffMember" },
+      "description": "Daftar anggota tim operasional yang terikat dengan email Google."
+    },
+    "/workspaces/{workspaceId}/assignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/ShiftAssignment" },
+      "description": "Jadwal penugasan shift Opening dan Closing."
+    },
+    "/workspaces/{workspaceId}/attendance/{recordId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Rekam absensi staf per penugasan shift beserta foto wajah masuk dan pulang."
+    },
+    "/workspaces/{workspaceId}/cleanlinessReports/{reportId}": {
+      "schema": { "$ref": "#/entities/CleanlinessReport" },
+      "description": "Laporan kebersihan per tanggal dan shift beserta catatan serah terima dan ringkasan AI terkonfirmasi."
+    },
+    "/workspaces/{workspaceId}/itemReports/{reportId}": {
+      "schema": { "$ref": "#/entities/ItemReport" },
+      "description": "Laporan barang rusak atau hilang dan status penanganannya."
+    },
+    "/workspaces/{workspaceId}/photos/{photoId}": {
+      "schema": { "$ref": "#/entities/PhotoDoc" },
+      "description": "Dokumen foto bukti terkompresi untuk sinkronisasi lintas perangkat dalam ruang kerja yang sama."
+    }
+  }
+}

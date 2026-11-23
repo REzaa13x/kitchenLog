@@ -1,0 +1,486 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Primitives
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string;
+    }
+
+    function authEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        authEmail() == 'bagusazhareko@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailStr(e) {
+      return e is string && e.size() >= 3 && e.size() <= 200;
+    }
+
+    function isValidDateStr(d) {
+      return d is string && d.size() == 10 && d.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function isValidShift(s) {
+      return s == 'opening' || s == 'closing';
+    }
+
+    function isValidMemberEmails(list) {
+      return list is list && list.size() >= 1 && list.size() <= 25 && list[0] is string;
+    }
+
+    function workspaceExists(workspaceId) {
+      return exists(/databases/$(database)/documents/workspaces/$(workspaceId));
+    }
+
+    function workspaceData(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() &&
+        workspaceExists(workspaceId) && (
+          workspaceData(workspaceId).ownerId == request.auth.uid ||
+          authEmail() in workspaceData(workspaceId).memberEmails
+        );
+    }
+
+    function isWorkspaceSupervisor(workspaceId) {
+      return isSignedIn() &&
+        workspaceExists(workspaceId) && (
+          workspaceData(workspaceId).ownerId == request.auth.uid ||
+          authEmail() in workspaceData(workspaceId).supervisorEmails ||
+          isAdmin()
+        );
+    }
+
+    function isListedWorkspaceDoc() {
+      return isSignedIn() && (
+        resource.data.ownerId == request.auth.uid ||
+        (resource.data.keys().hasAny(['memberEmails']) && authEmail() in resource.data.memberEmails)
+      );
+    }
+
+    // Validation Helpers
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'role', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.uid == request.auth.uid &&
+        isValidEmailStr(data.email) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        (!data.keys().hasAny(['photoURL']) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+        (data.role == 'staff' || (data.role == 'supervisor' && isAdmin())) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidWorkspace(data) {
+      return data.keys().hasAll(['ownerId', 'ownerEmail', 'kitchenName', 'memberEmails', 'supervisorEmails', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerId', 'ownerEmail', 'kitchenName', 'memberEmails', 'supervisorEmails', 'updatedAt']) &&
+        isValidId(data.ownerId) &&
+        isValidEmailStr(data.ownerEmail) &&
+        data.kitchenName is string && data.kitchenName.size() >= 1 && data.kitchenName.size() <= 120 &&
+        isValidMemberEmails(data.memberEmails) &&
+        data.supervisorEmails is list && data.supervisorEmails.size() >= 1 && data.supervisorEmails.size() <= 10 &&
+        data.supervisorEmails[0] is string &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStaffMember(data, workspaceId) {
+      return data.keys().hasAll(['id', 'ownerId', 'workspaceId', 'memberEmails', 'name', 'email', 'role', 'jobTitle']) &&
+        data.keys().hasOnly(['id', 'ownerId', 'workspaceId', 'memberEmails', 'name', 'email', 'role', 'jobTitle']) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        data.workspaceId == workspaceId &&
+        isValidMemberEmails(data.memberEmails) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        isValidEmailStr(data.email) &&
+        (data.role == 'staff' || data.role == 'supervisor') &&
+        data.jobTitle is string && data.jobTitle.size() >= 1 && data.jobTitle.size() <= 120;
+    }
+
+    function isValidShiftAssignment(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'memberEmails', 'date', 'shift', 'staffIds', 'picId', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'ownerId', 'memberEmails', 'date', 'shift', 'staffIds', 'picId', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        isValidMemberEmails(data.memberEmails) &&
+        isValidDateStr(data.date) &&
+        isValidShift(data.shift) &&
+        data.staffIds is list && data.staffIds.size() >= 1 && data.staffIds.size() <= 25 &&
+        data.staffIds[0] is string &&
+        isValidId(data.picId) &&
+        data.picId in data.staffIds &&
+        data.updatedAt is string && data.updatedAt.size() >= 1 && data.updatedAt.size() <= 64;
+    }
+
+    function isValidAttendanceRecord(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'memberEmails', 'assignmentId', 'date', 'shift',
+          'staffId', 'staffEmail', 'lateMinutes', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'memberEmails', 'assignmentId', 'date', 'shift',
+          'staffId', 'staffEmail', 'checkInTime', 'checkInMinutes', 'checkOutTime',
+          'checkOutMinutes', 'lateMinutes', 'durationMinutes', 'checkInPhotoId',
+          'checkOutPhotoId', 'supervisorStatus', 'supervisorNote', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        isValidMemberEmails(data.memberEmails) &&
+        isValidId(data.assignmentId) &&
+        isValidDateStr(data.date) &&
+        isValidShift(data.shift) &&
+        isValidId(data.staffId) &&
+        isValidEmailStr(data.staffEmail) &&
+        data.lateMinutes is number && data.lateMinutes >= 0 && data.lateMinutes <= 1440 &&
+        (!data.keys().hasAny(['checkInTime']) || data.checkInTime == null || (data.checkInTime is string && data.checkInTime.size() <= 10)) &&
+        (!data.keys().hasAny(['checkInMinutes']) || data.checkInMinutes == null || (data.checkInMinutes is number && data.checkInMinutes >= 0 && data.checkInMinutes <= 1440)) &&
+        (!data.keys().hasAny(['checkOutTime']) || data.checkOutTime == null || (data.checkOutTime is string && data.checkOutTime.size() <= 10)) &&
+        (!data.keys().hasAny(['checkOutMinutes']) || data.checkOutMinutes == null || (data.checkOutMinutes is number && data.checkOutMinutes >= 0 && data.checkOutMinutes <= 1440)) &&
+        (!data.keys().hasAny(['durationMinutes']) || data.durationMinutes == null || (data.durationMinutes is number && data.durationMinutes >= 0 && data.durationMinutes <= 1440)) &&
+        (!data.keys().hasAny(['checkInPhotoId']) || data.checkInPhotoId == null || isValidId(data.checkInPhotoId)) &&
+        (!data.keys().hasAny(['checkOutPhotoId']) || data.checkOutPhotoId == null || isValidId(data.checkOutPhotoId)) &&
+        (!data.keys().hasAny(['supervisorStatus']) || data.supervisorStatus == null || data.supervisorStatus in ['Izin', 'Sakit', 'Alpa']) &&
+        (!data.keys().hasAny(['supervisorNote']) || data.supervisorNote == null || (data.supervisorNote is string && data.supervisorNote.size() <= 500)) &&
+        data.updatedAt is string && data.updatedAt.size() >= 1 && data.updatedAt.size() <= 64;
+    }
+
+    function isValidCleanlinessReport(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'memberEmails', 'date', 'shift', 'picId', 'picEmail',
+          'picName', 'submittedAt', 'submittedTimeHHMM', 'areas', 'generalPhotoId', 'handoverNote'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'memberEmails', 'date', 'shift', 'picId', 'picEmail',
+          'picName', 'submittedAt', 'submittedTimeHHMM', 'areas', 'generalPhotoId',
+          'handoverNote', 'confirmedAiSummary', 'aiSummaryConfirmedAt', 'aiSummaryConfirmedBy'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        isValidMemberEmails(data.memberEmails) &&
+        isValidDateStr(data.date) &&
+        isValidShift(data.shift) &&
+        isValidId(data.picId) &&
+        isValidEmailStr(data.picEmail) &&
+        data.picName is string && data.picName.size() >= 1 && data.picName.size() <= 120 &&
+        data.submittedAt is string && data.submittedAt.size() >= 1 && data.submittedAt.size() <= 80 &&
+        data.submittedTimeHHMM is string && data.submittedTimeHHMM.size() == 5 &&
+        data.areas is list && data.areas.size() == 6 && data.areas[0] is map &&
+        isValidId(data.generalPhotoId) &&
+        data.handoverNote is string && data.handoverNote.size() <= 1500 &&
+        (!data.keys().hasAny(['confirmedAiSummary']) || data.confirmedAiSummary == null || (data.confirmedAiSummary is string && data.confirmedAiSummary.size() <= 1500)) &&
+        (!data.keys().hasAny(['aiSummaryConfirmedAt']) || data.aiSummaryConfirmedAt == null || (data.aiSummaryConfirmedAt is string && data.aiSummaryConfirmedAt.size() <= 80)) &&
+        (!data.keys().hasAny(['aiSummaryConfirmedBy']) || data.aiSummaryConfirmedBy == null || (data.aiSummaryConfirmedBy is string && data.aiSummaryConfirmedBy.size() <= 120));
+    }
+
+    function isValidItemReport(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'memberEmails', 'type', 'itemName', 'quantity', 'location',
+          'discoveredAt', 'reporterId', 'reporterEmail', 'reporterName', 'shift', 'date',
+          'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'memberEmails', 'type', 'itemName', 'quantity', 'location',
+          'lastKnownLocation', 'discoveredAt', 'notes', 'photoId',
+          'reporterId', 'reporterEmail', 'reporterName', 'shift', 'date', 'status',
+          'resolutionNote', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        isValidMemberEmails(data.memberEmails) &&
+        data.type in ['Barang Rusak', 'Barang Hilang'] &&
+        data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 150 &&
+        data.quantity is int && data.quantity >= 1 && data.quantity <= 1000 &&
+        data.location is string && data.location.size() >= 1 && data.location.size() <= 200 &&
+        (!data.keys().hasAny(['lastKnownLocation']) || (data.lastKnownLocation is string && data.lastKnownLocation.size() <= 500)) &&
+        data.discoveredAt is string && data.discoveredAt.size() >= 1 && data.discoveredAt.size() <= 80 &&
+        (!data.keys().hasAny(['notes']) || (data.notes is string && data.notes.size() <= 1000)) &&
+        (!data.keys().hasAny(['photoId']) || data.photoId == null || isValidId(data.photoId)) &&
+        isValidId(data.reporterId) &&
+        isValidEmailStr(data.reporterEmail) &&
+        data.reporterName is string && data.reporterName.size() >= 1 && data.reporterName.size() <= 120 &&
+        isValidShift(data.shift) &&
+        isValidDateStr(data.date) &&
+        data.status in ['Dilaporkan', 'Ditindaklanjuti', 'Selesai'] &&
+        (!data.keys().hasAny(['resolutionNote']) || (data.resolutionNote is string && data.resolutionNote.size() <= 1000)) &&
+        data.createdAt is string && data.createdAt.size() >= 1 && data.createdAt.size() <= 64 &&
+        data.updatedAt is string && data.updatedAt.size() >= 1 && data.updatedAt.size() <= 64;
+    }
+
+    function isValidPhotoDoc(data) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'memberEmails', 'uploaderEmail', 'source', 'dataUrl', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'memberEmails', 'uploaderEmail', 'source', 'dataUrl', 'createdAt'
+        ]) &&
+        isValidId(data.id) &&
+        isValidId(data.ownerId) &&
+        isValidMemberEmails(data.memberEmails) &&
+        isValidEmailStr(data.uploaderEmail) &&
+        data.source in ['camera', 'upload'] &&
+        data.dataUrl is string && data.dataUrl.size() >= 20 && data.dataUrl.size() <= 450000 &&
+        data.createdAt is string && data.createdAt.size() >= 1 && data.createdAt.size() <= 64;
+    }
+
+    // PII Isolated User Profiles
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']);
+    }
+
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isOwner(adminId);
+    }
+
+    // Workspace Root
+    match /workspaces/{workspaceId} {
+      allow get: if isValidId(workspaceId) && (
+        isWorkspaceMember(workspaceId) ||
+        isAdmin() ||
+        (isSignedIn() && workspaceId == ('ws-' + request.auth.uid))
+      );
+      allow list: if isListedWorkspaceDoc();
+      allow create: if isValidId(workspaceId) &&
+        isSignedIn() &&
+        isValidWorkspace(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().ownerEmail == authEmail() &&
+        authEmail() in incoming().memberEmails &&
+        authEmail() in incoming().supervisorEmails &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(workspaceId) &&
+        isWorkspaceSupervisor(workspaceId) &&
+        isValidWorkspace(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().ownerEmail == existing().ownerEmail &&
+        existing().ownerEmail in incoming().memberEmails &&
+        existing().ownerEmail in incoming().supervisorEmails &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'kitchenName', 'memberEmails', 'supervisorEmails', 'updatedAt'
+        ]);
+      allow delete: if isValidId(workspaceId) && isOwner(existing().ownerId);
+
+      // Subcollection: Staff Roster (Supervisor-managed)
+      match /staff/{staffId} {
+        allow get: if isValidId(workspaceId) && isValidId(staffId) && isWorkspaceMember(workspaceId);
+        allow list: if isListedWorkspaceDoc();
+        allow create: if isValidId(workspaceId) && isValidId(staffId) &&
+          isWorkspaceSupervisor(workspaceId) &&
+          isValidStaffMember(incoming(), workspaceId) &&
+          incoming().ownerId == workspaceData(workspaceId).ownerId;
+        allow update: if isValidId(workspaceId) && isValidId(staffId) &&
+          isWorkspaceSupervisor(workspaceId) &&
+          isValidStaffMember(incoming(), workspaceId) &&
+          incoming().id == existing().id &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().workspaceId == existing().workspaceId &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'email', 'role', 'jobTitle', 'memberEmails'
+          ]);
+        allow delete: if isValidId(workspaceId) && isValidId(staffId) &&
+          isWorkspaceSupervisor(workspaceId) &&
+          (
+            existing().email != workspaceData(workspaceId).ownerEmail ||
+            isOwner(workspaceData(workspaceId).ownerId)
+          );
+      }
+
+      // Subcollection: Shift Assignments (Supervisor-managed)
+      match /assignments/{assignmentId} {
+        allow get: if isValidId(workspaceId) && isValidId(assignmentId) && isWorkspaceMember(workspaceId);
+        allow list: if isListedWorkspaceDoc();
+        allow create: if isValidId(workspaceId) && isValidId(assignmentId) &&
+          isWorkspaceSupervisor(workspaceId) &&
+          isValidShiftAssignment(incoming()) &&
+          incoming().ownerId == workspaceData(workspaceId).ownerId;
+        allow update: if isValidId(workspaceId) && isValidId(assignmentId) &&
+          isWorkspaceSupervisor(workspaceId) &&
+          isValidShiftAssignment(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().date == existing().date &&
+          incoming().shift == existing().shift &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'staffIds', 'picId', 'memberEmails', 'updatedAt'
+          ]);
+        allow delete: if isValidId(workspaceId) && isValidId(assignmentId) && isWorkspaceSupervisor(workspaceId);
+      }
+
+      // Subcollection: Attendance Records (Self Check-in/out or Supervisor absence confirmation)
+      match /attendance/{recordId} {
+        allow get: if isValidId(workspaceId) && isValidId(recordId) && isWorkspaceMember(workspaceId);
+        allow list: if isListedWorkspaceDoc();
+        allow create: if isValidId(workspaceId) && isValidId(recordId) &&
+          isWorkspaceMember(workspaceId) &&
+          isValidAttendanceRecord(incoming()) &&
+          incoming().ownerId == workspaceData(workspaceId).ownerId &&
+          incoming().memberEmails == workspaceData(workspaceId).memberEmails &&
+          (
+            isWorkspaceSupervisor(workspaceId) ||
+            (
+              incoming().staffEmail == authEmail() &&
+              (!incoming().keys().hasAny(['supervisorStatus']) || incoming().supervisorStatus == null) &&
+              (!incoming().keys().hasAny(['supervisorNote']) || incoming().supervisorNote == null)
+            )
+          );
+        allow update: if isValidId(workspaceId) && isValidId(recordId) &&
+          isWorkspaceMember(workspaceId) &&
+          isValidAttendanceRecord(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().assignmentId == existing().assignmentId &&
+          incoming().staffId == existing().staffId &&
+          incoming().staffEmail == existing().staffEmail &&
+          (
+            (
+              (isWorkspaceSupervisor(workspaceId) || existing().staffEmail == authEmail()) &&
+              existing().checkInTime != null &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'checkOutTime', 'checkOutMinutes', 'durationMinutes', 'checkOutPhotoId', 'updatedAt'
+              ])
+            ) ||
+            (
+              isWorkspaceSupervisor(workspaceId) &&
+              existing().checkInTime == null &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'supervisorStatus', 'supervisorNote', 'updatedAt'
+              ])
+            ) ||
+            (
+              isWorkspaceSupervisor(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['memberEmails'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(recordId) && isWorkspaceSupervisor(workspaceId);
+      }
+
+      // Subcollection: Cleanliness Reports (PIC of shift or Supervisor)
+      match /cleanlinessReports/{reportId} {
+        allow get: if isValidId(workspaceId) && isValidId(reportId) && isWorkspaceMember(workspaceId);
+        allow list: if isListedWorkspaceDoc();
+        allow create: if isValidId(workspaceId) && isValidId(reportId) &&
+          isWorkspaceMember(workspaceId) &&
+          isValidCleanlinessReport(incoming()) &&
+          incoming().ownerId == workspaceData(workspaceId).ownerId &&
+          incoming().memberEmails == workspaceData(workspaceId).memberEmails &&
+          (isWorkspaceSupervisor(workspaceId) || incoming().picEmail == authEmail());
+        allow update: if isValidId(workspaceId) && isValidId(reportId) &&
+          isWorkspaceMember(workspaceId) &&
+          isValidCleanlinessReport(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().date == existing().date &&
+          incoming().shift == existing().shift &&
+          incoming().picId == existing().picId &&
+          incoming().picEmail == existing().picEmail &&
+          (
+            (
+              (isWorkspaceSupervisor(workspaceId) || existing().picEmail == authEmail()) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'confirmedAiSummary', 'aiSummaryConfirmedAt', 'aiSummaryConfirmedBy', 'handoverNote'
+              ])
+            ) ||
+            (
+              isWorkspaceSupervisor(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['memberEmails'])
+            )
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(reportId) && isWorkspaceSupervisor(workspaceId);
+      }
+
+      // Subcollection: Item Reports (Any member creates own; Supervisor resolves)
+      match /itemReports/{reportId} {
+        allow get: if isValidId(workspaceId) && isValidId(reportId) && isWorkspaceMember(workspaceId);
+        allow list: if isListedWorkspaceDoc();
+        allow create: if isValidId(workspaceId) && isValidId(reportId) &&
+          isWorkspaceMember(workspaceId) &&
+          isValidItemReport(incoming()) &&
+          incoming().ownerId == workspaceData(workspaceId).ownerId &&
+          incoming().memberEmails == workspaceData(workspaceId).memberEmails &&
+          incoming().status == 'Dilaporkan' &&
+          (!incoming().keys().hasAny(['resolutionNote']) || incoming().resolutionNote == '') &&
+          (isWorkspaceSupervisor(workspaceId) || incoming().reporterEmail == authEmail());
+        allow update: if isValidId(workspaceId) && isValidId(reportId) &&
+          isWorkspaceSupervisor(workspaceId) &&
+          isValidItemReport(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().createdAt == existing().createdAt &&
+          (
+            (
+              (existing().status != 'Selesai' || isAdmin()) &&
+              (incoming().status != 'Selesai' || (incoming().keys().hasAny(['resolutionNote']) && incoming().resolutionNote.size() >= 1)) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'status', 'resolutionNote', 'updatedAt'
+              ])
+            ) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['memberEmails'])
+          );
+        allow delete: if isValidId(workspaceId) && isValidId(reportId) && isWorkspaceSupervisor(workspaceId);
+      }
+
+      // Subcollection: Cross-Device Synced Compressed Photos
+      match /photos/{photoId} {
+        allow get: if isValidId(workspaceId) && isValidId(photoId) && isWorkspaceMember(workspaceId);
+        allow list: if isListedWorkspaceDoc();
+        allow create: if isValidId(workspaceId) && isValidId(photoId) &&
+          isWorkspaceMember(workspaceId) &&
+          isValidPhotoDoc(incoming()) &&
+          incoming().ownerId == workspaceData(workspaceId).ownerId &&
+          incoming().memberEmails == workspaceData(workspaceId).memberEmails &&
+          incoming().uploaderEmail == authEmail();
+        allow update: if isValidId(workspaceId) && isValidId(photoId) &&
+          isWorkspaceSupervisor(workspaceId) &&
+          isValidPhotoDoc(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().uploaderEmail == existing().uploaderEmail &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['memberEmails']);
+        allow delete: if isValidId(workspaceId) && isValidId(photoId) && isWorkspaceSupervisor(workspaceId);
+      }
+    }
+  }
+}
