@@ -100,8 +100,8 @@ export interface KitchenContextValue {
     }
   ) => Promise<ActionResult>;
   removeStaffMember: (staffId: string) => Promise<ActionResult>;
-  checkIn: (assignmentId: string, staffId: string, checkInPhotoId: string) => Promise<ActionResult>;
-  checkOut: (assignmentId: string, staffId: string, checkOutPhotoId: string) => Promise<ActionResult>;
+  checkIn: (assignmentId: string, staffId: string, checkInPhotoId: string, cleanliness: import('../types/kitchen').AttendanceCleanliness) => Promise<ActionResult>;
+  checkOut: (assignmentId: string, staffId: string, checkOutPhotoId: string, cleanliness: import('../types/kitchen').AttendanceCleanliness) => Promise<ActionResult>;
   confirmAbsenceStatus: (
     assignmentId: string,
     staffId: string,

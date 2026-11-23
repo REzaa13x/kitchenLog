@@ -26,6 +26,8 @@ export interface ShiftAssignment {
 export type SupervisorAbsenceStatus = 'Izin' | 'Sakit' | 'Alpa';
 
 export interface AttendanceRecord {
+  checkInCleanliness?: AttendanceCleanliness | null;
+  checkOutCleanliness?: AttendanceCleanliness | null;
   id: string;
   assignmentId: string;
   date: string; // YYYY-MM-DD in Asia/Jakarta
@@ -54,6 +56,10 @@ export type CleanlinessAreaKey =
   | 'area_penyimpanan';
 
 export type CleanlinessAreaStatus = 'Sudah Beres' | 'Perlu Ditangani';
+export interface AttendanceCleanliness {
+  areas: { key: CleanlinessAreaKey; status: CleanlinessAreaStatus; note: string }[];
+  kitchenPhotoDataUrl: string;
+}
 
 export interface CleanlinessAreaEntry {
   key: CleanlinessAreaKey;

@@ -120,7 +120,7 @@ const uid = (prefix) => `${prefix}_${Date.now().toString(36)}${crypto.randomByte
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '4mb' }));
 
 // CORS: izinkan origin panel + lokal saat pengujian.
 app.use((req, res, next) => {
@@ -355,6 +355,8 @@ app.get('/api/state', requireAuth, async (req, res) => {
         durationMinutes: a.duration_minutes,
         checkInPhotoId: a.check_in_photo_id,
         checkOutPhotoId: a.check_out_photo_id,
+        checkInCleanliness: safeJson(a.check_in_cleanliness, null),
+        checkOutCleanliness: safeJson(a.check_out_cleanliness, null),
         supervisorStatus: a.supervisor_status,
         supervisorNote: a.supervisor_note,
         updatedAt: String(a.updated_at || ''),
@@ -409,10 +411,43 @@ function safeJson(text, fallback) {
   }
 }
 
+const cleanlinessAreaKeys = ['meja_persiapan', 'kompor_area_masak', 'wastafel', 'lantai', 'tempat_sampah', 'area_penyimpanan'];
+function validAttendanceEvidence({ photoId, cleanliness } = {}) {
+  if (typeof photoId !== 'string' || !photoId.trim() || photoId.length > 200) return false;
+  if (!cleanliness || !Array.isArray(cleanliness.areas) || cleanliness.areas.length !== 6) return false;
+  const keys = new Set();
+  for (const area of cleanliness.areas) {
+    if (!area || !cleanlinessAreaKeys.includes(area.key) || keys.has(area.key)) return false;
+    if (!['Sudah Beres', 'Perlu Ditangani'].includes(area.status)) return false;
+    if (typeof area.note !== 'string' || area.note.length > 1000 || (area.status === 'Perlu Ditangani' && !area.note.trim())) return false;
+    keys.add(area.key);
+  }
+  const photo = cleanliness.kitchenPhotoDataUrl;
+  if (typeof photo !== 'string' || photo.length > 2800000) return false;
+  const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(photo);
+  if (!match || match[2].length % 4 !== 0) return false;
+  const bytes = Buffer.from(match[2], 'base64');
+  if (!bytes.length || bytes.length > 2 * 1024 * 1024 || bytes.toString('base64') !== match[2]) return false;
+  if (match[1] === 'png') return bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
+  if (match[1] === 'jpeg') return bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+  return bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+}
+
+// The deployed schema stores membership in assignments.staff_ids (no assignment_staff table).
+async function attendanceAssignment(workspaceId, assignmentId, user) {
+  const [rows] = await getPool().query('SELECT shift, staff_ids FROM assignments WHERE id = ? AND workspace_id = ? LIMIT 1', [assignmentId, workspaceId]);
+  if (!rows.length) return { status: 404, error: 'Jadwal shift tidak ditemukan.' };
+  const [staff] = await getPool().query('SELECT id FROM staff WHERE workspace_id = ? AND email = ?', [workspaceId, user.email]);
+  const ids = [user.id, ...staff.map(s => s.id)];
+  if (!String(rows[0].staff_ids || '').split(',').some(id => ids.includes(id.trim()))) return { status: 403, error: 'Anda tidak ditugaskan pada shift ini.' };
+  return { ...rows[0], ids };
+}
+
 // Absensi masuk/pulang
 app.post('/api/attendance/check-in', requireAuth, async (req, res) => {
   const { workspaceId, assignmentId, staffId, photoId } = req.body ?? {};
   if (staffId !== req.user.id) return res.status(403).json({ error: 'Anda hanya dapat mencatat absensi akun sendiri.' });
+  if (!validAttendanceEvidence(req.body)) return res.status(400).json({ error: 'Checklist kebersihan dan foto dapur wajib diisi.' });
   try {
     const access = await loadWorkspace(req.user.id, req.user.email, String(workspaceId || ''));
     if (access.error) return res.status(access.status).json({ error: access.error });
@@ -420,17 +455,34 @@ app.post('/api/attendance/check-in', requireAuth, async (req, res) => {
     const [h, m] = now.time.split(':').map(Number);
     const minutes = h * 60 + m;
 
-    const [asg] = await getPool().query('SELECT shift FROM assignments WHERE id = ? AND workspace_id = ? LIMIT 1', [assignmentId, workspaceId]);
-    if (asg.length === 0) return res.status(404).json({ error: 'Jadwal shift tidak ditemukan.' });
-
-    await getPool().query(
-      `INSERT INTO attendance (id, workspace_id, assignment_id, att_date, shift, staff_id, staff_email,
-        check_in_time, check_in_minutes, late_minutes, check_in_photo_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-       ON DUPLICATE KEY UPDATE check_in_time = VALUES(check_in_time),
-         check_in_minutes = VALUES(check_in_minutes), check_in_photo_id = VALUES(check_in_photo_id)`,
-      [uid('att'), workspaceId, assignmentId, now.date, asg[0].shift, staffId, req.user.email, now.time, minutes, photoId || null]
-    );
+    const asg = await attendanceAssignment(workspaceId, assignmentId, req.user);
+    if (asg.error) return res.status(asg.status).json({ error: asg.error });
+    const connection = await getPool().getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query('SELECT id FROM assignments WHERE id = ? AND workspace_id = ? FOR UPDATE', [assignmentId, workspaceId]);
+      const [existing] = await connection.query('SELECT id, check_in_time, check_out_time FROM attendance WHERE workspace_id = ? AND assignment_id = ? AND staff_id IN (?) FOR UPDATE', [workspaceId, assignmentId, asg.ids]);
+      if (existing.some(a => a.check_in_time || a.check_out_time)) {
+        await connection.rollback();
+        return res.status(409).json({ error: 'Absen masuk sudah dicatat.' });
+      }
+      if (existing.length) {
+        await connection.query('UPDATE attendance SET check_in_time = ?, check_in_minutes = ?, check_in_photo_id = ?, check_in_cleanliness = ? WHERE id = ?', [now.time, minutes, photoId, JSON.stringify(req.body.cleanliness), existing[0].id]);
+      } else {
+        await connection.query(
+          `INSERT INTO attendance (id, workspace_id, assignment_id, att_date, shift, staff_id, staff_email,
+            check_in_time, check_in_minutes, late_minutes, check_in_photo_id, check_in_cleanliness)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+          [uid('att'), workspaceId, assignmentId, now.date, asg.shift, staffId, req.user.email, now.time, minutes, photoId, JSON.stringify(req.body.cleanliness)]
+        );
+      }
+      await connection.commit();
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
     res.json({ ok: true, checkInTime: now.time });
   } catch (err) {
     res.status(500).json({ error: 'Gagal mencatat absen masuk.', detail: String(err?.message || err) });
@@ -440,19 +492,24 @@ app.post('/api/attendance/check-in', requireAuth, async (req, res) => {
 app.post('/api/attendance/check-out', requireAuth, async (req, res) => {
   const { workspaceId, assignmentId, staffId, photoId } = req.body ?? {};
   if (staffId !== req.user.id) return res.status(403).json({ error: 'Anda hanya dapat mencatat absensi akun sendiri.' });
+  if (!validAttendanceEvidence(req.body)) return res.status(400).json({ error: 'Checklist kebersihan dan foto dapur wajib diisi.' });
   try {
     const access = await loadWorkspace(req.user.id, req.user.email, String(workspaceId || ''));
     if (access.error) return res.status(access.status).json({ error: access.error });
     const now = wibNow();
     const [h, m] = now.time.split(':').map(Number);
     const minutes = h * 60 + m;
-    await getPool().query(
+    const asg = await attendanceAssignment(workspaceId, assignmentId, req.user);
+    if (asg.error) return res.status(asg.status).json({ error: asg.error });
+    const [updated] = await getPool().query(
       `UPDATE attendance SET check_out_time = ?, check_out_minutes = ?,
-         duration_minutes = IF(check_in_minutes IS NULL, NULL, ? - check_in_minutes),
-         check_out_photo_id = ?
-       WHERE workspace_id = ? AND assignment_id = ? AND staff_id = ?`,
-      [now.time, minutes, minutes, photoId || null, workspaceId, assignmentId, staffId]
+         duration_minutes = ? - check_in_minutes,
+         check_out_photo_id = ?, check_out_cleanliness = ?
+       WHERE workspace_id = ? AND assignment_id = ? AND staff_id IN (?)
+         AND check_in_time IS NOT NULL AND check_out_time IS NULL`,
+      [now.time, minutes, minutes, photoId, JSON.stringify(req.body.cleanliness), workspaceId, assignmentId, asg.ids]
     );
+    if (!updated.affectedRows) return res.status(409).json({ error: 'Absen masuk belum dicatat atau absen keluar sudah selesai.' });
     res.json({ ok: true, checkOutTime: now.time });
   } catch (err) {
     res.status(500).json({ error: 'Gagal mencatat absen keluar.', detail: String(err?.message || err) });

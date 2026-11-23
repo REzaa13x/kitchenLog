@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, CheckCircle2, RefreshCw, Upload, X } from 'lucide-react';
 import { savePhotoToIndexedDB } from '../storage/photoDb';
-import { ShiftType } from '../types/kitchen';
+import { ShiftType, AttendanceCleanliness, CleanlinessAreaStatus } from '../types/kitchen';
+import { CLEANLINESS_AREAS_TEMPLATE } from '../utils/cleanlinessTemplate';
 import { formatTimeDotWib, SHIFT_META } from '../utils/wibTime';
 import { PhotoViewer } from './PhotoViewer';
 
@@ -12,7 +13,7 @@ interface AttendanceFaceModalProps {
   shift: ShiftType;
   currentTimeHHMM: string;
   onClose: () => void;
-  onConfirm: (photoId: string) => Promise<{ ok: boolean; message: string }>;
+  onConfirm: (photoId: string, cleanliness: AttendanceCleanliness) => Promise<{ ok: boolean; message: string }>;
 }
 
 export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
@@ -33,6 +34,10 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [areas, setAreas] = useState<Record<string, { status: string; note: string }>>({});
+  const [kitchenPhoto, setKitchenPhoto] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const checklistReady = CLEANLINESS_AREAS_TEMPLATE.every(a => areas[a.key]?.status && (areas[a.key].status !== 'Perlu Ditangani' || areas[a.key].note.trim()));
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -74,6 +79,8 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
 
   useEffect(() => {
     if (open) {
+      setAreas({});
+      setKitchenPhoto('');
       setPhotoId(null);
       setSubmitError(null);
       setCameraError(null);
@@ -121,6 +128,10 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
   };
 
   const handleSubmitAttendance = async () => {
+    if (!checklistReady || !kitchenPhoto || photoLoading) {
+      setSubmitError('Lengkapi semua checklist dan foto kondisi dapur sebelum absensi.');
+      return;
+    }
     if (!photoId) {
       setSubmitError('Foto wajah wajib diambil atau diunggah sebelum konfirmasi absen.');
       return;
@@ -128,7 +139,7 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const res = await onConfirm(photoId);
+      const res = await onConfirm(photoId, { areas: CLEANLINESS_AREAS_TEMPLATE.map(a => ({ key: a.key, status: areas[a.key].status as CleanlinessAreaStatus, note: areas[a.key].note })), kitchenPhotoDataUrl: kitchenPhoto });
       if (!res.ok) {
         setSubmitError(res.message);
         return;
@@ -170,6 +181,27 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
         </div>
 
         <div className="p-5 space-y-4">
+          <fieldset disabled={submitting} className="space-y-3">
+            <legend className="font-semibold">Checklist kebersihan wajib · {actionLabel}</legend>
+            <p className="text-xs">Isi ulang sesuai kondisi saat ini. Foto dapur dan checklist check-in terpisah dari check-out.</p>
+            {CLEANLINESS_AREAS_TEMPLATE.map(a => <div key={a.key} className="space-y-1">
+              <label htmlFor={`attendance-${a.key}`} className="block text-sm font-medium">{a.label}</label>
+              <select id={`attendance-${a.key}`} value={areas[a.key]?.status || ''} onChange={e => setAreas(p => ({...p,[a.key]:{status:e.target.value,note:p[a.key]?.note || ''}}))} className="w-full min-h-[44px] border rounded-lg px-3 bg-white">
+                <option value="">Pilih kondisi</option><option>Sudah Beres</option><option>Perlu Ditangani</option>
+              </select>
+              {areas[a.key]?.status === 'Perlu Ditangani' && <input aria-label={`Catatan ${a.label}`} placeholder="Catatan kendala wajib" maxLength={1000} value={areas[a.key].note} onChange={e => setAreas(p=>({...p,[a.key]:{...p[a.key],note:e.target.value}}))} className="w-full min-h-[44px] border rounded-lg px-3"/>}
+            </div>)}
+            <label htmlFor="attendance-kitchen-photo" className="block font-medium">Foto kondisi dapur (wajib)</label>
+            <input id="attendance-kitchen-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoLoading} onChange={async e => {
+              const file=e.target.files?.[0]; e.target.value=''; if(!file)return;
+              setKitchenPhoto('');setSubmitError(null);
+              if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024){setSubmitError('Gunakan foto JPEG/PNG/WebP maksimal 10 MB.');return;}
+              setPhotoLoading(true);
+              try {const bitmap=await createImageBitmap(file);const scale=Math.min(1,1280/Math.max(bitmap.width,bitmap.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d')!.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();setKitchenPhoto(canvas.toDataURL('image/jpeg',0.8));}catch{setSubmitError('Foto dapur tidak dapat dibaca. Pilih foto lain.');}finally{setPhotoLoading(false);}
+            }}/>
+            {photoLoading && <p role="status">Memproses foto dapur…</p>}
+            {kitchenPhoto && <img src={kitchenPhoto} alt="Kondisi dapur saat absensi" className="w-full rounded-xl"/>}
+          </fieldset>
           {!photoId ? (
             <div className="space-y-3">
               {cameraActive ? (
@@ -286,7 +318,7 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
             </button>
             <button
               type="button"
-              disabled={!photoId || submitting}
+              disabled={!photoId || submitting || !checklistReady || !kitchenPhoto || photoLoading}
               onClick={handleSubmitAttendance}
               className="min-h-[48px] flex-1 px-4 py-2.5 rounded-xl bg-[var(--kl-accent)] text-white text-sm font-semibold hover:bg-[var(--kl-accent-hover)] disabled:opacity-50 inline-flex items-center justify-center gap-2"
             >

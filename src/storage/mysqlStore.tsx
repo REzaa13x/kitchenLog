@@ -410,7 +410,8 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const checkIn = async (
     assignmentId: string,
     staffId: string,
-    checkInPhotoId: string
+    checkInPhotoId: string,
+    cleanliness: import('../types/kitchen').AttendanceCleanliness
   ): Promise<ActionResult> => {
     const ctx = requireReady();
     if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
@@ -418,7 +419,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
       async () => {
         await call('/attendance/check-in', {
           method: 'POST',
-          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkInPhotoId || null },
+          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkInPhotoId || null, cleanliness },
         });
       },
       'Absen masuk tercatat.'
@@ -428,7 +429,8 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const checkOut = async (
     assignmentId: string,
     staffId: string,
-    checkOutPhotoId: string
+    checkOutPhotoId: string,
+    cleanliness: import('../types/kitchen').AttendanceCleanliness
   ): Promise<ActionResult> => {
     const ctx = requireReady();
     if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
@@ -436,7 +438,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
       async () => {
         await call('/attendance/check-out', {
           method: 'POST',
-          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkOutPhotoId || null },
+          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkOutPhotoId || null, cleanliness },
         });
       },
       'Absen keluar tercatat.'

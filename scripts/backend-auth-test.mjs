@@ -12,6 +12,7 @@ await admin.query(`USE \`${database}\``);
 const schema = await fs.readFile(new URL('../database/dapurops-schema.sql', import.meta.url), 'utf8');
 for (const sql of schema.replace(/CREATE DATABASE IF NOT EXISTS[\s\S]*?;/, '').replace(/USE `ngola_dapurops`;/, '').split(';')) if (sql.trim()) await admin.query(sql);
 try { const migration = await fs.readFile(new URL('../database/migrations/20261123-staff-accounts.sql', import.meta.url),'utf8'); for (const sql of migration.split(';')) if(sql.trim()) await admin.query(sql); } catch(e) { if(e.code !== 'ENOENT') throw e; }
+for (const sql of (await fs.readFile(new URL('../database/migrations/20261123-attendance-cleanliness.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 const source = (await fs.readFile(new URL('../server/index.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace(/app\.listen\(PORT,[\s\S]*$/, 'return { app, loadWorkspace, hashPassword };');
 const db = mysql.createPool({host:'127.0.0.1',user:'root',database,...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u=>[['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}),dateStrings:true});
 const { app, hashPassword, loadWorkspace } = new Function('express','mysql','crypto','registerExtraRoutes',source)(express,{createPool:()=>db},crypto,registerExtraRoutes);
@@ -45,6 +46,29 @@ try {
  assert.equal((await request('/attendance/check-in',{workspaceId:'ws',assignmentId:'missing',staffId:'u_supervisor_75d4f29fee493805'},'POST',signed.body.token)).status,403,'staff cannot check in another account');
  assert.equal((await request('/attendance/check-out',{workspaceId:'ws',assignmentId:'missing',staffId:'u_supervisor_75d4f29fee493805'},'POST',signed.body.token)).status,403,'staff cannot check out another account');
  const [[user]]=await admin.query('SELECT * FROM users WHERE username = ?', ['cook.one']);
+ await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('shift','ws','2026-11-23','opening',?,?)",[created.body.id,created.body.id]);
+ const attendanceBody={workspaceId:'ws',assignmentId:'shift',staffId:user.id,photoId:'face-photo'};
+ assert.equal((await request('/attendance/check-in',attendanceBody,'POST',signed.body.token)).status,400,'check-in requires cleanliness evidence');
+ const areaKeys=['meja_persiapan','kompor_area_masak','wastafel','lantai','tempat_sampah','area_penyimpanan'];
+ const photo='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=';
+ const evidence={areas:areaKeys.map(key=>({key,status:'Sudah Beres',note:''})),kitchenPhotoDataUrl:photo};
+ const invalidEvidence=[{}, {...evidence,areas:[]}, {...evidence,areas:[...evidence.areas.slice(0,5),evidence.areas[0]]}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,key:'unknown'})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,status:'bad'})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,status:'Perlu Ditangani',note:' '})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,note:'x'.repeat(1001)})}, {...evidence,kitchenPhotoDataUrl:''}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,aGVsbG8='}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,!!!!'}, {...evidence,kitchenPhotoDataUrl:photo.replace('image/png','image/jpeg')}, {...evidence,kitchenPhotoDataUrl:photo.replace('image/png','image/svg+xml')}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,'+Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),Buffer.alloc(2*1024*1024)]).toString('base64')}];
+ for(const action of ['check-in','check-out']) {
+  for(const cleanliness of [undefined,...invalidEvidence]) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,cleanliness},'POST',signed.body.token)).status,400,`${action} rejects invalid evidence`);
+  for(const photoId of [undefined,null,4,' ','x'.repeat(201)]) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,cleanliness:evidence,photoId},'POST',signed.body.token)).status,400,`${action} requires valid face photo ID`);
+ }
+ assert.equal((await request('/attendance/check-out',{...attendanceBody,cleanliness:evidence},'POST',signed.body.token)).status,409,'checkout requires prior checkin');
+ for(const action of ['check-in','check-out']) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,staffId:'u_supervisor_75d4f29fee493805',cleanliness:evidence},'POST',token)).status,403,'unassigned admin cannot record attendance');
+ assert.equal((await request('/attendance/check-in',{...attendanceBody,cleanliness:evidence},'POST',signed.body.token)).status,200,'assigned legacy staff ID accepts canonical user ID');
+ const outEvidence={...evidence,areas:evidence.areas.map((a,i)=>i?a:{...a,status:'Perlu Ditangani',note:'Kompor perlu dibersihkan'})};
+ assert.equal((await request('/attendance/check-out',{...attendanceBody,photoId:'face-out',cleanliness:outEvidence},'POST',signed.body.token)).status,200,'checkout requires its own evidence');
+ for(const action of ['check-in','check-out']) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,cleanliness:evidence},'POST',signed.body.token)).status,409,'completed action cannot be overwritten');
+ const attendanceState=(await request('/state?workspaceId=ws',undefined,'GET',signed.body.token)).body.attendance[0];
+ assert.deepEqual(attendanceState.checkInCleanliness,evidence,'state persists kitchen photo and checkin checklist');
+ assert.deepEqual(attendanceState.checkOutCleanliness,outEvidence,'checkout evidence stored separately');
+ const [[stored]]=await admin.query('SELECT check_in_cleanliness,check_out_cleanliness FROM attendance WHERE staff_id=?',[user.id]);
+ assert.deepEqual(JSON.parse(stored.check_in_cleanliness),evidence,'database survives device photo storage loss');
+ assert.deepEqual(JSON.parse(stored.check_out_cleanliness),outEvidence);
  assert.match(user.password_hash,/^scrypt\$/); assert.notEqual(user.password_hash,account.password);
  const [[ws]]=await admin.query("SELECT * FROM workspaces WHERE id='ws'"); assert.ok(ws.member_emails.split(',').includes(user.email));
  assert.equal((await request('/staff',{...account,username:'bypass',role:'supervisor'},'POST',signed.body.token)).status,403,'staff cannot create supervisors');

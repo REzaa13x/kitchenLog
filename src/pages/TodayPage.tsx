@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AttendanceFaceModal } from '../components/AttendanceFaceModal';
+import { AttendanceCleanlinessEvidence } from '../components/AttendanceCleanlinessEvidence';
 import { CleanlinessForm } from '../components/CleanlinessForm';
 import { FacePhotoAvatar } from '../components/FacePhotoAvatar';
 import { ItemReportModal } from '../components/ItemReportModal';
@@ -213,6 +214,7 @@ export const TodayPage: React.FC<TodayPageProps> = ({
                     </div>
                   )}
 
+                  <AttendanceCleanlinessEvidence record={record}/>
                   {record?.supervisorNote && (
                     <p className="text-xs text-[var(--kl-ink-sub)] bg-[var(--kl-soft)] rounded-lg px-3 py-2">
                       Catatan Admin: {record.supervisorNote}
@@ -468,14 +470,14 @@ export const TodayPage: React.FC<TodayPageProps> = ({
         shift={faceModal?.shift ?? 'opening'}
         currentTimeHHMM={nowWib.timeHHMM}
         onClose={() => setFaceModal(null)}
-        onConfirm={async (photoId) => {
+        onConfirm={async (photoId, cleanliness) => {
           if (!faceModal) {
             return { ok: false, message: 'Sesi absensi tidak ditemukan.' };
           }
           const res =
             faceModal.mode === 'checkin'
-              ? await checkIn(faceModal.assignmentId, currentUser.id, photoId)
-              : await checkOut(faceModal.assignmentId, currentUser.id, photoId);
+              ? await checkIn(faceModal.assignmentId, currentUser.id, photoId, cleanliness)
+              : await checkOut(faceModal.assignmentId, currentUser.id, photoId, cleanliness);
           if (!res.ok) {
             setAttendanceFeedback((p) => ({
               ...p,

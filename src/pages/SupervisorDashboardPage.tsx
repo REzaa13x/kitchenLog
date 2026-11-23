@@ -14,6 +14,7 @@ import { FacePhotoAvatar } from '../components/FacePhotoAvatar';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { useKitchen } from '../storage/kitchenContext';
 import { ShiftType, SupervisorAbsenceStatus } from '../types/kitchen';
+import { AttendanceCleanlinessEvidence } from '../components/AttendanceCleanlinessEvidence';
 import {
   formatDateIndo,
   formatDurationIndo,
@@ -342,6 +343,7 @@ export const SupervisorDashboardPage: React.FC<SupervisorDashboardPageProps> = (
                               <p className="text-xs text-[var(--kl-ink-muted)]">Belum melakukan check-in</p>
                             )}
 
+                            <AttendanceCleanlinessEvidence record={rec}/>
                             {(rec?.checkInPhotoId || rec?.checkOutPhotoId) && (
                               <div className="flex flex-wrap items-center gap-2 pt-1.5">
                                 {rec?.checkInPhotoId && (
