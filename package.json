@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "tsx server/dev.ts",
     "start": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
@@ -12,7 +12,7 @@
     "lint": "tsc --noEmit",
     "lint:rules": "eslint firestore.rules",
     "verify:handover": "tsx scripts/verify-handover-summary.ts && tsx scripts/verify-handover-component.tsx",
-    "dev:demo": "tsx server.ts",
+    "dev:demo": "tsx server/dev.ts",
     "verify:auth": "tsx scripts/verify-auth-validation.ts",
     "verify:all": "npm run verify:handover && npm run verify:auth",
     "start:api": "node server/index.js"
