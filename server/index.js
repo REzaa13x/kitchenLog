@@ -411,6 +411,7 @@ function safeJson(text, fallback) {
 // Absensi masuk/pulang
 app.post('/api/attendance/check-in', requireAuth, async (req, res) => {
   const { workspaceId, assignmentId, staffId, photoId } = req.body ?? {};
+  if (staffId !== req.user.id) return res.status(403).json({ error: 'Anda hanya dapat mencatat absensi akun sendiri.' });
   try {
     const access = await loadWorkspace(req.user.id, req.user.email, String(workspaceId || ''));
     if (access.error) return res.status(access.status).json({ error: access.error });
@@ -437,6 +438,7 @@ app.post('/api/attendance/check-in', requireAuth, async (req, res) => {
 
 app.post('/api/attendance/check-out', requireAuth, async (req, res) => {
   const { workspaceId, assignmentId, staffId, photoId } = req.body ?? {};
+  if (staffId !== req.user.id) return res.status(403).json({ error: 'Anda hanya dapat mencatat absensi akun sendiri.' });
   try {
     const access = await loadWorkspace(req.user.id, req.user.email, String(workspaceId || ''));
     if (access.error) return res.status(access.status).json({ error: access.error });

@@ -572,7 +572,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     workspaceLoading,
     workspaceAccessStatus: accessStatus,
     authError,
-    currentUser: toAccount(apiUser),
+    currentUser: apiUser ? { ...toAccount(apiUser)!, role: state.users.find(u => u.id === apiUser.id)?.role ?? 'staff' } : null,
     nowWib,
     toastMessage,
     canDeleteActiveWorkspace: workspaces.length > 1,

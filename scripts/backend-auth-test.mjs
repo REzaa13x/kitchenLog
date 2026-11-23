@@ -35,6 +35,8 @@ try {
  const signed=await request('/auth/login',{username:'COOK.ONE',password:'Password123'});
  assert.equal(signed.status,200,'normalized username login');
  assert.equal(signed.body.user.username,'cook.one');
+ assert.equal((await request('/attendance/check-in',{workspaceId:'ws',assignmentId:'missing',staffId:'owner'},'POST',signed.body.token)).status,403,'staff cannot check in another account');
+ assert.equal((await request('/attendance/check-out',{workspaceId:'ws',assignmentId:'missing',staffId:'owner'},'POST',signed.body.token)).status,403,'staff cannot check out another account');
  const [[user]]=await admin.query('SELECT * FROM users WHERE username = ?', ['cook.one']);
  assert.match(user.password_hash,/^scrypt\$/); assert.notEqual(user.password_hash,account.password);
  const [[ws]]=await admin.query("SELECT * FROM workspaces WHERE id='ws'"); assert.ok(ws.member_emails.split(',').includes(user.email));
