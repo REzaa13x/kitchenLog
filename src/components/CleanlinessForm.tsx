@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, ClipboardCheck, Send } from 'lucide-react';
 import { createInitialCleanlinessAreas } from '../utils/cleanlinessTemplate';
-import { useKitchen } from '../storage/kitchenStore';
+import { useKitchen } from '../storage/kitchenContext';
 import { CleanlinessAreaEntry, CleanlinessAreaStatus, ShiftType } from '../types/kitchen';
 import { formatDateIndo, SHIFT_META } from '../utils/wibTime';
 import { HandoverSummaryBox } from './HandoverSummaryBox';

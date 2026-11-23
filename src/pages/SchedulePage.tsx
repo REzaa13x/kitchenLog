@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Calendar, Check, UserCheck } from 'lucide-react';
-import { useKitchen } from '../storage/kitchenStore';
+import { useKitchen } from '../storage/kitchenContext';
 import { ShiftType } from '../types/kitchen';
 import { formatDateIndo, SHIFT_META } from '../utils/wibTime';
 

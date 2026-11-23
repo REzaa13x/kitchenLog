@@ -8,7 +8,7 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
-import { useKitchen } from '../storage/kitchenStore';
+import { useKitchen } from '../storage/kitchenContext';
 import { formatDateIndo, formatTimeDotWib } from '../utils/wibTime';
 
 export const LoginPage: React.FC = () => {

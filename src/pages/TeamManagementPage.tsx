@@ -12,7 +12,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
-import { useKitchen } from '../storage/kitchenStore';
+import { useKitchen } from '../storage/kitchenContext';
 import { UserAccount, UserRole } from '../types/kitchen';
 import { resolveKitchenTheme } from '../utils/kitchenTheme';
 

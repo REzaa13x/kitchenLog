@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ClipboardCheck, History, PackageOpen } from 'lucide-react';
 import { FacePhotoAvatar } from '../components/FacePhotoAvatar';
 import { StatusIndicator } from '../components/StatusIndicator';
-import { useKitchen } from '../storage/kitchenStore';
+import { useKitchen } from '../storage/kitchenContext';
 import { ShiftType } from '../types/kitchen';
 import {
   formatDateIndo,

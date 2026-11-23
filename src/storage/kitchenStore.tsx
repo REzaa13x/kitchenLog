@@ -49,6 +49,20 @@ import {
   SHIFT_META,
 } from '../utils/wibTime';
 import { setActivePhotoSyncContext } from './photoDb';
+import {
+  KitchenContext,
+  useKitchen,
+} from './kitchenContext';
+import type {
+  ActionResult,
+  KitchenContextValue,
+  WorkspaceAccessStatus,
+  WorkspaceSummary,
+} from './kitchenContext';
+
+export { KitchenContext, useKitchen };
+export type { ActionResult, KitchenContextValue, WorkspaceAccessStatus, WorkspaceSummary };
+
 
 const BOOTSTRAP_ADMIN_EMAIL = 'bagusazhareko@gmail.com';
 const ACTIVE_WORKSPACE_KEY = 'kitchenlog_active_workspace_v1';
@@ -57,17 +71,6 @@ const DEFAULT_KITCHENS: Array<{ id: string; name: string }> = [
   { id: 'dapur-container', name: 'Dapur Container' },
 ];
 
-interface ActionResult {
-  ok: boolean;
-  message: string;
-}
-
-export type WorkspaceAccessStatus = 'loading' | 'signed_out' | 'uninvited' | 'ready';
-
-export interface WorkspaceSummary {
-  id: string;
-  kitchenName: string;
-}
 
 interface WorkspaceMeta {
   id: string;
@@ -77,102 +80,6 @@ interface WorkspaceMeta {
   memberEmails: string[];
   supervisorEmails: string[];
 }
-
-interface KitchenContextValue {
-  state: KitchenLogState;
-  workspaces: WorkspaceSummary[];
-  activeWorkspaceId: string | null;
-  firebaseUser: FirebaseUser | null;
-  authReady: boolean;
-  workspaceLoading: boolean;
-  workspaceAccessStatus: WorkspaceAccessStatus;
-  authError: string | null;
-  currentUser: UserAccount | null;
-  nowWib: {
-    date: string;
-    timeHHMM: string;
-    minutes: number;
-  };
-  toastMessage: string | null;
-  canDeleteActiveWorkspace: boolean;
-  showToast: (msg: string) => void;
-  signInWithGoogle: () => Promise<void>;
-  signOutGoogle: () => Promise<void>;
-  switchWorkspace: (workspaceId: string) => void;
-  recheckWorkspaceAccess: () => Promise<void>;
-  createOwnWorkspace: (kitchenName: string) => Promise<ActionResult>;
-  addKitchenWorkspace: (kitchenName: string) => Promise<ActionResult>;
-  deleteWorkspace: (workspaceId: string) => Promise<ActionResult>;
-  updateKitchenName: (kitchenName: string) => Promise<ActionResult>;
-  addStaffMember: (payload: {
-    name: string;
-    email: string;
-    role: UserRole;
-    jobTitle: string;
-  }) => Promise<ActionResult>;
-  updateStaffMember: (
-    staffId: string,
-    payload: {
-      name: string;
-      email: string;
-      role: UserRole;
-      jobTitle: string;
-    }
-  ) => Promise<ActionResult>;
-  removeStaffMember: (staffId: string) => Promise<ActionResult>;
-  checkIn: (assignmentId: string, staffId: string, checkInPhotoId: string) => Promise<ActionResult>;
-  checkOut: (assignmentId: string, staffId: string, checkOutPhotoId: string) => Promise<ActionResult>;
-  confirmAbsenceStatus: (
-    assignmentId: string,
-    staffId: string,
-    status: SupervisorAbsenceStatus,
-    note?: string
-  ) => Promise<ActionResult>;
-  upsertSchedule: (
-    date: string,
-    shift: ShiftType,
-    staffIds: string[],
-    picId: string
-  ) => Promise<ActionResult>;
-  submitCleanlinessReport: (payload: {
-    date: string;
-    shift: ShiftType;
-    picId: string;
-    picName: string;
-    areas: CleanlinessAreaEntry[];
-    generalPhotoId: string;
-    handoverNote: string;
-    confirmedAiSummary?: string | null;
-    aiSummaryConfirmedAt?: string | null;
-    aiSummaryConfirmedBy?: string | null;
-  }) => Promise<ActionResult>;
-  confirmOpeningAiSummary: (
-    reportId: string,
-    confirmedAiSummary: string,
-    handoverNote?: string
-  ) => Promise<ActionResult>;
-  createItemReport: (payload: {
-    type: ItemReportType;
-    itemName: string;
-    quantity: number;
-    location: string;
-    lastKnownLocation: string;
-    discoveredAt: string;
-    notes: string;
-    photoId: string | null;
-    reporterId: string;
-    reporterName: string;
-    shift: ShiftType;
-    date: string;
-  }) => Promise<ActionResult>;
-  updateItemReportStatus: (
-    reportId: string,
-    status: ItemReportStatus,
-    resolutionNote?: string
-  ) => Promise<ActionResult>;
-}
-
-const KitchenContext = createContext<KitchenContextValue | null>(null);
 
 function emptyState(): KitchenLogState {
   return {
@@ -1512,10 +1419,3 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 };
 
-export function useKitchen(): KitchenContextValue {
-  const ctx = useContext(KitchenContext);
-  if (!ctx) {
-    throw new Error('useKitchen harus digunakan di dalam KitchenProvider');
-  }
-  return ctx;
-}

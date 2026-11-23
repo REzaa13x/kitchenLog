@@ -15,7 +15,7 @@ import { CleanlinessForm } from '../components/CleanlinessForm';
 import { FacePhotoAvatar } from '../components/FacePhotoAvatar';
 import { ItemReportModal } from '../components/ItemReportModal';
 import { StatusIndicator } from '../components/StatusIndicator';
-import { useKitchen } from '../storage/kitchenStore';
+import { useKitchen } from '../storage/kitchenContext';
 import { ShiftType } from '../types/kitchen';
 import {
   formatDateIndo,

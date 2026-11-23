@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { PhotoSource, StoredPhoto } from '../types/kitchen';
 
 const DB_NAME = 'kitchenlog_photos_db';
@@ -18,6 +16,19 @@ interface PhotoSyncContext {
 }
 
 let activePhotoSyncContext: PhotoSyncContext | null = null;
+
+/**
+ * Firebase dimuat secara lazy HANYA saat ada konteks sinkronisasi foto.
+ * Di mode demo konteks itu tidak pernah dipasang, sehingga modul Firebase
+ * tidak pernah diunduh sama sekali.
+ */
+async function getFirestoreForPhotoSync() {
+  const [{ doc, getDoc, setDoc }, { db }] = await Promise.all([
+    import('firebase/firestore'),
+    import('../firebase'),
+  ]);
+  return { doc, getDoc, setDoc, db };
+}
 
 export function setActivePhotoSyncContext(ctx: PhotoSyncContext | null): void {
   activePhotoSyncContext = ctx;
@@ -145,6 +156,7 @@ export async function savePhotoToIndexedDB(
 
   if (activePhotoSyncContext && dataUrl.length <= MAX_DATA_URL_LENGTH) {
     try {
+      const { doc, setDoc, db } = await getFirestoreForPhotoSync();
       await setDoc(doc(db, 'workspaces', activePhotoSyncContext.workspaceId, 'photos', id), {
         id,
         ownerId: activePhotoSyncContext.ownerId,
@@ -218,6 +230,7 @@ export function useStoredPhoto(photoId: string | null | undefined): {
 
       if (activePhotoSyncContext) {
         try {
+          const { doc, getDoc, db } = await getFirestoreForPhotoSync();
           const snap = await getDoc(
             doc(db, 'workspaces', activePhotoSyncContext.workspaceId, 'photos', photoId)
           );

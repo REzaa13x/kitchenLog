@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { FacePhotoAvatar } from '../components/FacePhotoAvatar';
 import { StatusIndicator } from '../components/StatusIndicator';
-import { useKitchen } from '../storage/kitchenStore';
+import { useKitchen } from '../storage/kitchenContext';
 import { ShiftType, SupervisorAbsenceStatus } from '../types/kitchen';
 import {
   formatDateIndo,

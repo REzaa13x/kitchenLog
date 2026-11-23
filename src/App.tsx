@@ -23,7 +23,7 @@ import { SchedulePage } from './pages/SchedulePage';
 import { SupervisorDashboardPage } from './pages/SupervisorDashboardPage';
 import { TeamManagementPage } from './pages/TeamManagementPage';
 import { TodayPage } from './pages/TodayPage';
-import { KitchenProvider, useKitchen } from './storage/kitchenStore';
+import { useKitchen } from './storage/kitchenContext';
 import { AppView, ShiftType } from './types/kitchen';
 import { resolveKitchenTheme } from './utils/kitchenTheme';
 import { formatDateIndo, formatTimeDotWib } from './utils/wibTime';
@@ -459,11 +459,10 @@ function KitchenShell() {
 }
 
 export default function App() {
+  // Provider (Firebase atau demo) dipasang di titik masuk: src/main.tsx / src/main-demo.tsx
   return (
     <ErrorBoundary>
-      <KitchenProvider>
-        <KitchenShell />
-      </KitchenProvider>
+      <KitchenShell />
     </ErrorBoundary>
   );
 }

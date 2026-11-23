@@ -15,7 +15,19 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <!--
+      Mode demo dipilih lewat ?demo=1 (mis. http://localhost:3000/?demo=1).
+      Mode demo memuat data contoh di memori dan tidak menyentuh Firebase.
+      Tanpa parameter itu, aplikasi berjalan normal dengan Firebase.
+    -->
+    <script type="module">
+      const isDemo = new URLSearchParams(location.search).get('demo') === '1';
+      const entry = isDemo ? '/src/main-demo.tsx' : '/src/main.tsx';
+      if (isDemo) document.title = 'KitchenLog — Mode Demo';
+      const s = document.createElement('script');
+      s.type = 'module';
+      s.src = entry;
+      document.body.appendChild(s);
+    </script>
   </body>
 </html>
-
