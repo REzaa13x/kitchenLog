@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ListChecks } from 'lucide-react';
 import { CleanlinessAreaEntry, ItemReport } from '../types/kitchen';
 import { StatusIndicator } from './StatusIndicator';
@@ -27,12 +27,22 @@ export const HandoverSummaryBox: React.FC<HandoverSummaryBoxProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [justConfirmed, setJustConfirmed] = useState(false);
+  const draftRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (confirmedSummary) {
       setDraft(confirmedSummary);
     }
   }, [confirmedSummary]);
+
+  // Sesuaikan tinggi textarea dengan isinya, supaya ringkasan hasil susun
+  // tidak terpotong dan pengguna tidak perlu menggulir di dalam kotak kecil.
+  useLayoutEffect(() => {
+    const el = draftRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   const issueAreas = areas.filter((a) => a.status === 'Perlu Ditangani');
   const openReports = openItemReports.filter((item) => item.status !== 'Selesai');
@@ -118,6 +128,7 @@ export const HandoverSummaryBox: React.FC<HandoverSummaryBoxProps> = ({
           </label>
           <textarea
             id="handover-summary-draft"
+            ref={draftRef}
             rows={4}
             value={draft}
             onChange={(e) => {
