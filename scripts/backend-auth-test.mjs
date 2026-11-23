@@ -25,7 +25,7 @@ try {
  const login=await request('/auth/login',{username:'admin@gmail.com',password:'Password123'});
  assert.equal(login.status,200,'legacy supervisor email accepted in username');
  const token=login.body.token;
- assert.match((await request('/auth/forgot-password',{email:'admin@gmail.com'})).body.message,/Supervisor/,'password recovery directs supervisor');
+ assert.match((await request('/auth/forgot-password',{email:'admin@gmail.com'})).body.message,/Admin/,'password recovery directs supervisor');
  const [[recovery]]=await admin.query("SELECT reset_token FROM users WHERE id='u_supervisor_75d4f29fee493805'"); assert.equal(recovery.reset_token,null,'no unusable reset tokens');
  await admin.query("UPDATE users SET role='staff' WHERE id='u_supervisor_75d4f29fee493805'");
  assert.equal((await request('/auth/login',{email:'admin@gmail.com',password:'Password123'})).status,200,'legacy workspace owner with old staff global role can log in');

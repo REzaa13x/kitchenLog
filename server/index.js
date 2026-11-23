@@ -216,7 +216,7 @@ async function loadWorkspace(userId, email, workspaceId) {
 // ---------- Auth ----------
 
 app.post('/api/auth/register', async (req, res) => {
-  return res.status(403).json({ error: 'Pendaftaran publik ditutup. Hubungi Supervisor.' });
+  return res.status(403).json({ error: 'Pendaftaran publik ditutup. Hubungi Admin.' });
 });
 
 // ponytail: per-process limiter; use a shared store for multiple backend replicas.
@@ -291,7 +291,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 });
 
 app.post('/api/auth/forgot-password', (_req, res) => {
-  res.json({ ok: true, message: 'Hubungi Supervisor untuk mengatur ulang password.' });
+  res.json({ ok: true, message: 'Hubungi Admin untuk mengatur ulang password.' });
 });
 
 // ---------- Data operasional ----------

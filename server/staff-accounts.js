@@ -10,7 +10,7 @@ export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, has
       if (typeof workspaceId !== 'string' || !workspaceId || workspaceId.length > 64) throw fail(400, 'workspaceId tidak valid.');
       const access = await loadWorkspace(req.user.id, req.user.email, workspaceId);
       if (access.error) throw fail(access.status, access.error);
-      if (!access.isSupervisor) throw fail(403, 'Hanya Supervisor yang dapat mengelola anggota tim.');
+      if (!access.isSupervisor) throw fail(403, 'Hanya Admin yang dapat mengelola anggota tim.');
       const hasUsername = Object.hasOwn(b, 'username');
       const hasPassword = Object.hasOwn(b, 'password');
       const username = typeof b.username === 'string' ? b.username.trim().toLowerCase() : null;
@@ -42,7 +42,7 @@ export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, has
       let id = staff?.id;
       if (mode !== 'delete') {
         const role = 'staff';
-        const job = b.jobTitle ?? staff?.job_title ?? (role === 'supervisor' ? 'Supervisor Operasional' : 'Staf Dapur');
+        const job = b.jobTitle ?? staff?.job_title ?? (role === 'supervisor' ? 'Admin Operasional' : 'Staf Dapur');
         const name = b.name.trim();
         if (mode === 'create') {
           id = uid('u');
