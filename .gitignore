@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Arsip build untuk unggahan manual ke panel hosting
+kitchenlog-dist.zip
