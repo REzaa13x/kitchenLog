@@ -22,12 +22,14 @@ const run = promisify(execFile);
 const NAME_RE = /^dapurops-(\d{4})(\d{2})(\d{2})\.sql(\.json)?$/;
 
 function config() {
-  const raw = process.env.BACKUP_PATH || join(process.cwd(), '..', 'dapurops-backups');
+  // Default: folder di dalam situs (persisten di hosting panel), bukan ~ (ephemeral di cron).
+  const raw = process.env.BACKUP_PATH || join(process.cwd(), 'dapurops-backups');
   // Cron/shell tidak selalu meng-expand ~; lakukan sendiri agar path absolut.
   const expanded = raw.startsWith('~') ? join(homedir(), raw.slice(1)) : raw;
   const path = resolve(expanded);
   const keepDays = Number(process.env.BACKUP_KEEP_DAYS || 14);
   if (!Number.isInteger(keepDays) || keepDays < 1 || keepDays > 365) throw new Error('BACKUP_KEEP_DAYS harus 1–365.');
+  // Webroot = folder situs (tempat cwd saat cron berjalan).
   const webroot = resolve(process.env.WEBROOT || process.cwd());
   const relative = path.startsWith(webroot);
   return { path, keepDays, insideWebroot: relative, webroot };
