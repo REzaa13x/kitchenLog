@@ -23,7 +23,9 @@
     "verify:ops": "node scripts/operations-test.mjs && node scripts/photos-test.mjs && node scripts/backend-auth-test.mjs",
     "verify:backup": "node scripts/backup-restore-test.mjs && node scripts/backup-daily-test.mjs",
     "verify:resilience": "node scripts/verify-resilience-browser.cjs",
-    "backup:daily": "node scripts/backup-daily.mjs"
+    "backup:daily": "node scripts/backup-daily.mjs",
+    "test:shift-tasks": "node scripts/shift-tasks-test.mjs",
+    "verify:shift-tasks": "node scripts/verify-shift-tasks-browser.cjs"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

@@ -18,7 +18,20 @@ Berlaku untuk staf shift Opening & Closing. Simpan halaman ini di HP (screenshot
 
 > Checklist kebersihan **tidak** diisi di sini. Checklist punya halaman sendiri (bagian 3), supaya absensi cepat walau sedang buru-buru.
 
-## 3. Checklist kebersihan (halaman Laporan Kebersihan)
+## 3. Rekap Pekerjaan (daftar tugas shift)
+
+Di halaman **Hari Ini** ada kartu **Rekap Pekerjaan** sesuai shift Anda:
+
+- **Opening** (7 tugas): persiapan dapur, masak nasi 2 rice cooker, cek bahan kosong untuk belanja,
+  bikin teh & air gula, nasi goreng basic tanpa kecap, bawang & cabe di-chopper bila habis, marinasi ayam.
+- **Closing** (7 tugas): bersihkan kompor/rice cooker/peralatan, cuci & tiriskan peralatan,
+  bersihkan meja-wastafel-lantai, buang sampah & ganti kantong, simpan sisa bahan berlabel,
+  matikan listrik yang tidak perlu, kunci dapur & serahkan kunci ke PIC closing.
+
+Cara pakai: ketuk baris tugas untuk mencentang. Centang tersimpan **per staf**, jadi rekap Anda
+tidak menimpa rekap rekan lain. Ketuk lagi untuk membatalkan.
+
+## 4. Checklist kebersihan (halaman Laporan Kebersihan)
 
 1. Buka menu **Laporan Kebersihan**.
 2. Di bagian atas ada **Checklist Kebersihan Saya (6 Area)** — ini milik Anda sendiri.
@@ -29,14 +42,14 @@ Berlaku untuk staf shift Opening & Closing. Simpan halaman ini di HP (screenshot
    - **Laporan Kebersihan PIC Shift** → laporan ringkasan satu shift, hanya diisi PIC shift.
    Selama PIC belum mengirim, tulisan "Laporan PIC Belum Dikirim" itu **normal** dan tidak menghalangi checklist Anda.
 
-## 4. Check-out (wajib, di akhir shift)
+## 5. Check-out (wajib, di akhir shift)
 
 Sama seperti check-in: tekan **Check-out**, ambil **Foto Wajah**, lalu **Konfirmasi Check-out**.
 Isi/rapikan checklist kebersihan Anda **sebelum** check-out agar tercatat sebagai kondisi pulang.
 
 Jika Anda lupa check-out: aplikasi tetap mengizinkan check-out sampai **7 hari** setelah shift. Segera lakukan, atau minta Admin mengoreksi.
 
-## 5. Kalau sinyal jelek / gagal simpan
+## 6. Kalau sinyal jelek / gagal simpan
 
 Aplikasi **tidak akan mencatat absensi sukses** bila foto atau data gagal terkirim. Yang harus dilakukan:
 
@@ -46,20 +59,20 @@ Aplikasi **tidak akan mencatat absensi sukses** bila foto atau data gagal terkir
 4. Bila tetap gagal: foto layar (screenshot) pesan error-nya, lalu hubungi Admin.
 5. **Jangan** menekan Check-in berkali-kali di HP lain untuk mengejar status — absensi ganda menyulitkan rekap.
 
-## 6. Temuan kebersihan
+## 7. Temuan kebersihan
 
 - Area yang Anda tandai **Perlu Ditangani** otomatis menjadi tugas tindak lanjut.
 - Bila Anda ditunjuk sebagai **penanggung jawab (PJ)**: buka **Laporan Kebersihan** → pilih tanggal & shift → pada area tersebut tekan **Tandai Sedang Ditangani**, lalu setelah beres isi **catatan + foto bukti** dan tekan **Tandai Selesai**.
 - Temuan tidak dianggap selesai tanpa foto bukti.
 
-## 6. Yang tidak boleh dilakukan
+## 8. Yang tidak boleh dilakukan
 
 - Memakai akun staf lain untuk absen.
 - Memalsukan foto (foto lama, foto layar, atau foto orang lain).
 - Mengubah jadwal sendiri (hanya Admin).
 - Membagikan password ke rekan kerja.
 
-## 7. Bila aplikasi bermasalah (prosedur darurat)
+## 9. Bila aplikasi bermasalah (prosedur darurat)
 
 | Gejala | Yang dilakukan staf |
 | --- | --- |
@@ -71,7 +84,7 @@ Aplikasi **tidak akan mencatat absensi sukses** bila foto atau data gagal terkir
 
 **Kontak Admin:** ______________________ (isi nomor WhatsApp Admin dapur)
 
-## 8. Hal yang dicatat Admin (agar transparan)
+## 10. Hal yang dicatat Admin (agar transparan)
 
 - Jam masuk/pulang, keterlambatan, pulang lebih awal, dan durasi kerja dihitung otomatis dari jam server (WIB), bukan jam HP.
 - Setiap koreksi absensi oleh Admin wajib beralasan dan tercatat permanen di jejak audit (pelaku, waktu, nilai sebelum & sesudah).

@@ -131,6 +131,12 @@ export interface KitchenContextValue {
     shift: ShiftType;
     cleanliness: import('../types/kitchen').AttendanceCleanliness;
   }) => Promise<ActionResult>;
+  /** Rekap pekerjaan per shift: daftar tugas + progres centang. */
+  fetchShiftTasks?: (payload: { date: string; shift: ShiftType }) => Promise<{
+    tasks: { key: string; label: string; detail?: string }[];
+    progress: { staffId: string; taskKey: string; done: boolean; note?: string }[];
+  } | null>;
+  toggleShiftTask?: (payload: { date: string; shift: ShiftType; taskKey: string; done: boolean; note?: string }) => Promise<ActionResult>;
   confirmAbsenceStatus: (
     assignmentId: string,
     staffId: string,

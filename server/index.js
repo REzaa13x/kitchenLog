@@ -8,6 +8,7 @@ import { registerFrontend } from './frontend.js';
 import { registerPhotos, assertAttendancePhoto } from './photos.js';
 import { registerOperations } from './operations.js';
 import { isShift, lateMinutes, summarizeAttendance } from './attendance-rules.js';
+import { SHIFT_TASKS, findTask } from './shift-tasks.js';
 
 /**
  * KitchenLog — Backend API (MySQL)
@@ -633,6 +634,78 @@ function attendanceHandler(action) {
 // Absensi masuk/pulang
 app.post('/api/attendance/check-in', requireAuth, attendanceHandler('check-in'));
 app.post('/api/attendance/check-out', requireAuth, attendanceHandler('check-out'));
+
+// Rekap Pekerjaan per shift: katalog tugas + progres centang per staf.
+// GET  /api/shift-tasks?workspaceId=..&date=YYYY-MM-DD&shift=opening
+// PATCH /api/shift-tasks  { workspaceId, date, shift, taskKey, done, note? }
+app.get('/api/shift-tasks', requireAuth, async (req, res) => {
+  const workspaceId = String(req.query.workspaceId || '');
+  const date = String(req.query.date || '');
+  const shift = String(req.query.shift || '');
+  try {
+    const access = await loadWorkspace(req.user.id, req.user.email, workspaceId);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!isShift(shift)) return res.status(400).json({ error: 'Shift tidak valid.' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Tanggal tidak valid.' });
+
+    const [rows] = await getPool().query(
+      'SELECT staff_id, task_key, done, note, updated_at FROM shift_task_progress WHERE workspace_id = ? AND task_date = ? AND shift = ?',
+      [workspaceId, date, shift]
+    );
+    res.json({
+      shift,
+      date,
+      tasks: SHIFT_TASKS[shift] ?? [],
+      progress: rows.map((row) => ({
+        staffId: row.staff_id,
+        taskKey: row.task_key,
+        done: Boolean(row.done),
+        note: row.note ?? '',
+        updatedAt: row.updated_at,
+      })),
+    });
+  } catch {
+    res.status(500).json({ error: 'Gagal memuat rekap pekerjaan.' });
+  }
+});
+
+app.patch('/api/shift-tasks', requireAuth, async (req, res) => {
+  const b = req.body ?? {};
+  const workspaceId = String(b.workspaceId || '');
+  const date = String(b.date || '');
+  const shift = String(b.shift || '');
+  const taskKey = String(b.taskKey || '');
+  try {
+    const access = await loadWorkspace(req.user.id, req.user.email, workspaceId);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!isShift(shift)) return res.status(400).json({ error: 'Shift tidak valid.' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Tanggal tidak valid.' });
+    if (!findTask(shift, taskKey)) return res.status(400).json({ error: 'Tugas tidak dikenal untuk shift ini.' });
+    if (typeof b.done !== 'boolean') return res.status(400).json({ error: 'Status centang harus berupa boolean.' });
+    const note = typeof b.note === 'string' ? b.note.trim().slice(0, 500) : null;
+
+    // Hanya staf yang ditugaskan pada shift itu (atau Admin) yang boleh mencentang.
+    const [assignments] = await getPool().query(
+      'SELECT staff_ids FROM assignments WHERE workspace_id = ? AND shift_date = ? AND shift = ? LIMIT 1',
+      [workspaceId, date, shift]
+    );
+    if (!assignments.length) return res.status(404).json({ error: 'Jadwal shift tidak ditemukan untuk tanggal ini.' });
+    const [staff] = await getPool().query('SELECT id FROM staff WHERE workspace_id = ? AND email = ?', [workspaceId, req.user.email]);
+    const ids = [req.user.id, ...staff.map((s) => s.id)];
+    const assigned = String(assignments[0].staff_ids || '').split(',').some((id) => ids.includes(id.trim()));
+    if (!assigned && !access.isSupervisor) return res.status(403).json({ error: 'Anda tidak ditugaskan pada shift ini.' });
+
+    await getPool().query(
+      `INSERT INTO shift_task_progress (id, workspace_id, task_date, shift, staff_id, task_key, done, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE done = VALUES(done), note = VALUES(note)`,
+      [uid('stp'), workspaceId, date, shift, req.user.id, taskKey, b.done ? 1 : 0, note]
+    );
+    res.json({ ok: true, taskKey, done: b.done });
+  } catch {
+    res.status(500).json({ error: 'Gagal menyimpan rekap pekerjaan.' });
+  }
+});
 
 // Checklist kebersihan pribadi staf (terpisah dari laporan PIC shift).
 // Disimpan pada catatan absensi staf tersebut; bila belum ada absensi, dibuat

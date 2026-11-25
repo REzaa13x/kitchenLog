@@ -13,6 +13,7 @@ import {
 import { AttendanceFaceModal } from '../components/AttendanceFaceModal';
 import { AttendanceCleanlinessEvidence } from '../components/AttendanceCleanlinessEvidence';
 import { CleanlinessForm } from '../components/CleanlinessForm';
+import { ShiftTaskList } from '../components/ShiftTaskList';
 import { FacePhotoAvatar } from '../components/FacePhotoAvatar';
 import { ItemReportModal } from '../components/ItemReportModal';
 import { StatusIndicator } from '../components/StatusIndicator';
@@ -289,6 +290,11 @@ export const TodayPage: React.FC<TodayPageProps> = ({
           </div>
         )}
       </section>
+
+      {/* Rekap Pekerjaan: daftar tugas shift yang bisa dicentang staf */}
+      {todayAssignments.map((assignment) => (
+        <ShiftTaskList key={`tasks-${assignment.id}`} date={nowWib.date} shift={assignment.shift} />
+      ))}
 
       {/* Ringkasan Serah Terima & Catatan dari Opening (tampil untuk Tim Closing & PIC Opening) */}
       {(isAssignedClosing || isPicOpening || currentUser.role === 'supervisor') && (

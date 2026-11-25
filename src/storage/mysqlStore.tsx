@@ -659,6 +659,32 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     );
   };
 
+  const fetchShiftTasks = async (payload: { date: string; shift: ShiftType }) => {
+    const ctx = requireReady();
+    if (!ctx) return null;
+    try {
+      const query = `?workspaceId=${encodeURIComponent(ctx.wsId)}&date=${encodeURIComponent(payload.date)}&shift=${encodeURIComponent(payload.shift)}`;
+      const data = await call<{
+        tasks: { key: string; label: string; detail?: string }[];
+        progress: { staffId: string; taskKey: string; done: boolean; note?: string }[];
+      }>(`/shift-tasks${query}`);
+      return { tasks: data?.tasks ?? [], progress: data?.progress ?? [] };
+    } catch {
+      return null;
+    }
+  };
+
+  const toggleShiftTask = async (payload: { date: string; shift: ShiftType; taskKey: string; done: boolean; note?: string }): Promise<ActionResult> => {
+    const ctx = requireReady();
+    if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
+    return wrap(
+      async () => {
+        await call('/shift-tasks', { method: 'PATCH', body: { workspaceId: ctx.wsId, ...payload } });
+      },
+      payload.done ? 'Tugas ditandai selesai.' : 'Tanda selesai dibatalkan.'
+    );
+  };
+
   const value: KitchenContextValue = {
     state,
     workspaces,
@@ -695,6 +721,8 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     fetchOperationalReport,
     updateCleanlinessFollowup,
     submitMyCleanliness,
+    fetchShiftTasks,
+    toggleShiftTask,
     confirmAbsenceStatus,
     upsertSchedule,
     submitCleanlinessReport,
