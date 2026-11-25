@@ -30,6 +30,7 @@ export const TeamManagementPage: React.FC = () => {
     addKitchenWorkspace,
     deleteWorkspace,
     addStaffMember,
+    syncGeasteatsStaff,
     updateStaffMember,
     removeStaffMember,
   } = useKitchen();
@@ -56,6 +57,8 @@ export const TeamManagementPage: React.FC = () => {
   const [role, setRole] = useState<UserRole>('staff');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
 
   const activeTheme = resolveKitchenTheme(activeWorkspaceId, state.kitchenName);
 
@@ -185,6 +188,12 @@ export const TeamManagementPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {currentUser?.role === 'supervisor' && syncGeasteatsStaff && <button type="button" disabled={syncing} onClick={async () => {
+            setSyncing(true);
+            try { const result = await syncGeasteatsStaff(); setSyncMessage(result.message); }
+            finally { setSyncing(false); }
+          }} className="min-h-[40px] px-3 rounded-xl border text-xs font-semibold disabled:opacity-50">{syncing ? 'Menyinkronkan…' : 'Sinkronkan Staf Geasteats'}</button>}
+          <span role="status" className="text-xs">{syncMessage}</span>
           {workspaces.length > 1 && (
             <div className="relative min-w-[200px]">
               <Building2
@@ -556,13 +565,15 @@ export const TeamManagementPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => startEdit(member)}
+                      disabled={Boolean(member.geasteatsStaffId)}
+                      title={member.geasteatsStaffId ? 'Dikelola di Geasteats' : undefined}
                       className="min-h-[40px] px-3 py-1.5 rounded-lg border border-[var(--kl-border-strong)] bg-[var(--kl-bg)] text-xs font-semibold text-[var(--kl-ink)] hover:bg-[var(--kl-soft)] inline-flex items-center gap-1.5"
                     >
                       <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
                       <span>Ubah</span>
                     </button>
 
-                    {!isSelf && (
+                    {!isSelf && !member.geasteatsStaffId && (
                       <button
                         type="button"
                         onClick={() => handleRemove(member)}

@@ -80,6 +80,7 @@ export interface KitchenContextValue {
   addKitchenWorkspace: (kitchenName: string) => Promise<ActionResult>;
   deleteWorkspace: (workspaceId: string) => Promise<ActionResult>;
   updateKitchenName: (kitchenName: string) => Promise<ActionResult>;
+  syncGeasteatsStaff?: () => Promise<ActionResult>;
   addStaffMember: (payload: {
     name: string;
     email: string;

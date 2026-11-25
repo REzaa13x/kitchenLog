@@ -12,6 +12,7 @@ export interface UserAccount {
   phone?: string;
   /** ID baris tabel staff (bila berbeda dari id akun). */
   staffId?: string;
+  geasteatsStaffId?: string | null;
   username?: string;
 }
 

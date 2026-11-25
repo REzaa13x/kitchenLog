@@ -30,7 +30,7 @@ export const LoginPage: React.FC = () => {
     <section className="w-full max-w-md rounded-2xl border border-[#E5DFD0] bg-white p-6 sm:p-8 space-y-6 shadow-sm">
       <div className="flex items-center gap-3 font-bold text-[#1B4332]"><ChefHat aria-hidden="true" className="h-8 w-8"/><span>DapurOps · Ngolab</span></div>
       <div className="space-y-2"><h1 className="text-2xl font-bold">{uninvited ? 'Akses dapur belum tersedia' : 'Masuk ke Operasional Dapur'}</h1>
-        <p className="text-sm leading-relaxed text-[#55625A]">{uninvited ? 'Hubungi Admin untuk mendapatkan akses dapur yang sesuai.' : 'Gunakan username dan password yang diberikan Admin.'}</p></div>
+        <p className="text-sm leading-relaxed text-[#55625A]">{uninvited ? 'Hubungi Admin untuk mendapatkan akses dapur yang sesuai.' : 'Gunakan email dan password Geasteats. Akun lama DapurOps masih dapat digunakan.'}</p></div>
       {(error || authError) && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error || authError}</p>}
       {uninvited ? <div className="flex gap-3">
         <button type="button" disabled={busy} onClick={recheck} className="min-h-[48px] rounded-xl bg-[#1B4332] px-4 text-white disabled:opacity-60">Periksa Akses</button>

@@ -2,6 +2,7 @@ import express from 'express';
 import mysql from 'mysql2/promise';
 import crypto from 'node:crypto';
 import { registerExtraRoutes } from './routes-extra.js';
+import { createGeasteats } from './geasteats.js';
 
 /**
  * KitchenLog — Backend API (MySQL)
@@ -157,6 +158,8 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
+const geasteats = createGeasteats({ getPool, hashPassword });
+
 // ---------- Middleware autentikasi ----------
 
 async function requireAuth(req, res, next) {
@@ -166,7 +169,7 @@ async function requireAuth(req, res, next) {
     if (!token) return res.status(401).json({ error: 'Autentikasi diperlukan.' });
 
     const [rows] = await getPool().query(
-      `SELECT s.token, s.expires_at, u.id, u.username, u.email, u.name, u.phone, u.role, u.job_title, u.email_verified
+      `SELECT s.token, s.expires_at, u.id, u.username, u.email, u.name, u.phone, u.role, u.job_title, u.email_verified, u.geasteats_staff_id
          FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.token = ? LIMIT 1`,
       [token]
@@ -179,8 +182,17 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ error: 'Sesi sudah berakhir. Silakan masuk kembali.' });
     }
 
+    if (session.geasteats_staff_id) {
+      try {
+        if (!await geasteats.active(session.geasteats_staff_id)) {
+          await getPool().query('DELETE FROM sessions WHERE user_id = ?', [session.id]);
+          return res.status(401).json({ error: 'Akun Geasteats tidak aktif.' });
+        }
+      } catch { return res.status(503).json({ error: 'Geasteats tidak dapat memverifikasi sesi.' }); }
+    }
     req.user = {
       id: session.id,
+      geasteatsStaffId: session.geasteats_staff_id,
       username: session.username,
       email: session.email,
       name: session.name,
@@ -238,15 +250,22 @@ app.post('/api/auth/login', async (req, res) => {
   }
   const { username, email, password } = req.body ?? {};
   const identifier = username ?? email;
-  if (typeof identifier !== 'string' || identifier.length > 200 || typeof password !== 'string' || password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Username dan password tidak valid.' });
+  if (typeof identifier !== 'string' || identifier.length > 200 || typeof password !== 'string' || password.length < 1 || password.length > 128) return res.status(400).json({ error: 'Username dan password tidak valid.' });
   const clean = identifier.trim().toLowerCase();
   if (!isEmail(clean) && !/^[a-z0-9][a-z0-9._-]{2,31}$/.test(clean)) return res.status(400).json({ error: 'Username tidak valid.' });
   try {
     const pool = getPool();
     const [rows] = await pool.query(isEmail(clean) ? 'SELECT * FROM users WHERE email = ? LIMIT 1' : 'SELECT * FROM users WHERE username = ? LIMIT 1', [clean]);
-    if (rows.length === 0) return res.status(401).json({ error: 'Username atau password salah.' });
-    const user = rows[0];
-    if (!verifyPassword(String(password), user.password_hash)) {
+    const local = rows[0];
+    let user;
+    if (geasteats.enabled() && (isEmail(clean) || local?.geasteats_staff_id)) {
+      try { user = await geasteats.login(isEmail(clean) ? clean : local.email, password); }
+      catch (err) {
+        if (!local || local.geasteats_staff_id || err.status !== 503) return res.status(err.status || 503).json({ error: 'Login Geasteats gagal.' });
+      }
+    }
+    if (!user && local && !local.geasteats_staff_id && verifyPassword(password, local.password_hash)) user = local;
+    if (!user) {
       return res.status(401).json({ error: 'Username atau password salah.' });
     }
     const token = newToken();
@@ -257,13 +276,19 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({
       token,
       user: {
-        id: user.id, username: user.username, email: user.email, name: user.name, phone: user.phone,
+        id: user.id, geasteatsStaffId: user.geasteats_staff_id, username: user.username, email: user.email, name: user.name, phone: user.phone,
         role: isAdmin(user.id, user.email) ? 'supervisor' : 'staff', jobTitle: user.job_title, emailVerified: Boolean(user.email_verified),
       },
     });
   } catch (err) {
     res.status(500).json({ error: 'Gagal masuk.', detail: String(err?.message || err) });
   }
+});
+
+app.post('/api/integrations/geasteats/sync', requireAuth, async (req, res) => {
+  if (!isAdmin(req.user.id, req.user.email)) return res.status(403).json({ error: 'Hanya Admin.' });
+  try { res.json(await geasteats.sync()); }
+  catch (err) { res.status(err.status || 503).json({ error: 'Sinkronisasi Geasteats gagal.' }); }
 });
 
 app.post('/api/auth/logout', requireAuth, async (req, res) => {
@@ -310,7 +335,7 @@ app.get('/api/state', requireAuth, async (req, res) => {
     const [attRows] = await pool.query('SELECT * FROM attendance WHERE workspace_id = ? ORDER BY att_date, shift', [workspaceId]);
     const [cleanRows] = await pool.query('SELECT * FROM cleanliness_reports WHERE workspace_id = ? ORDER BY report_date, shift', [workspaceId]);
     const [itemRows] = await pool.query('SELECT * FROM item_reports WHERE workspace_id = ? ORDER BY created_at DESC', [workspaceId]);
-    const [userRows] = await pool.query('SELECT u.id, u.email, u.username FROM users u JOIN staff s ON s.email = u.email WHERE s.workspace_id = ?', [workspaceId]);
+    const [userRows] = await pool.query('SELECT u.id, u.email, u.username, u.geasteats_staff_id FROM users u JOIN staff s ON s.email = u.email WHERE s.workspace_id = ?', [workspaceId]);
     const usernameByEmail = new Map(userRows.map(u => [String(u.email).toLowerCase(), u.username]));
     const userByEmail = new Map(userRows.map((u) => [String(u.email).toLowerCase(), u.id]));
     const staffIdToEmail = new Map(staffRows.map((s) => [s.id, String(s.email).toLowerCase()]));
@@ -330,6 +355,7 @@ app.get('/api/state', requireAuth, async (req, res) => {
         // dapat dicocokkan dengan staffIds/picId. staff_id tetap dikirim terpisah.
         id: userByEmail.get(String(s.email).toLowerCase()) || s.id,
         staffId: s.id,
+        geasteatsStaffId: userRows.find(u => u.id === userByEmail.get(String(s.email).toLowerCase()))?.geasteats_staff_id || null,
         username: usernameByEmail.get(String(s.email).toLowerCase()) || null,
         name: s.name, email: s.email, role: isAdmin(userByEmail.get(String(s.email).toLowerCase()), s.email) ? 'supervisor' : 'staff', jobTitle: s.job_title,
       })),

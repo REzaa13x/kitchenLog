@@ -37,6 +37,7 @@ export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, has
         if (staff.email.toLowerCase() === 'admin@gmail.com') throw fail(403, 'Akun Admin tidak dapat diubah di sini.');
         const [[account]] = await c.query('SELECT * FROM users WHERE email = ? FOR UPDATE', [staff.email]);
         user = account;
+        if (user?.geasteats_staff_id) throw fail(403, 'Profil dan akun Geasteats dikelola di Geasteats.');
       }
       let email = staff?.email;
       let id = staff?.id;

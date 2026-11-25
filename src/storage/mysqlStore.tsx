@@ -361,6 +361,11 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, 'Nama dapur diperbarui.');
   };
 
+  const syncGeasteatsStaff = async (): Promise<ActionResult> => {
+    if (!requireReady()) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
+    return wrap(async () => { await call('/integrations/geasteats/sync', { method: 'POST' }); }, 'Staf Geasteats disinkronkan.');
+  };
+
   const addStaffMember = async (payload: {
     name: string;
     email: string;
@@ -591,6 +596,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     deleteWorkspace,
     updateKitchenName,
     addStaffMember,
+    syncGeasteatsStaff,
     updateStaffMember,
     removeStaffMember,
     checkIn,
