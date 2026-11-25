@@ -91,15 +91,45 @@ let verified = null;
 if (!process.argv.includes('--no-verify')) verified = await verifyOnce(target);
 const removed = await retention(dirname(target), cfg.keepDays, target);
 
+// Sandbox hosting dapat membuat direktori kerja bersifat sementara, sehingga
+// salinan di disk lokal tidak cukup sebagai satu-satunya bukti. Bila
+// BACKUP_UPLOAD_URL diisi, kirim salinan keluar server (mis. storage panel).
+let uploaded = 'SKIPPED';
+if (process.env.BACKUP_UPLOAD_URL) {
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const payload = await readFile(target);
+    const response = await fetch(process.env.BACKUP_UPLOAD_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        ...(process.env.BACKUP_UPLOAD_TOKEN ? { Authorization: `Bearer ${process.env.BACKUP_UPLOAD_TOKEN}` } : {}),
+        'X-Backup-Name': `dapurops-${stamp()}.sql`,
+        'X-Backup-Sha256': result.sha256,
+      },
+      body: payload,
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    uploaded = 'PASS';
+  } catch (error) {
+    // Jangan klaim sukses bila salinan luar gagal; exit code non-nol memicu alert.
+    uploaded = 'FAIL';
+    console.error(`FAIL unggah salinan backup: ${error instanceof Error ? error.message : 'tidak diketahui'}`);
+    process.exitCode = 1;
+  }
+}
+
 console.log(
   JSON.stringify({
-    status: 'PASS',
+    status: process.exitCode ? 'PARTIAL' : 'PASS',
     file: target,
     insideWebroot: cfg.insideWebroot,
     tables: result.tables,
     rows: result.rows,
     sha256: result.sha256,
     restore: verified ? 'PASS' : 'SKIPPED',
+    uploaded,
     retentionDays: cfg.keepDays,
     removed: removed.length,
   })
