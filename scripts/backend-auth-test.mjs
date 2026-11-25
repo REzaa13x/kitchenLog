@@ -6,6 +6,7 @@ import express from 'express';
 import mysql from 'mysql2/promise';
 import { registerExtraRoutes } from '../server/routes-extra.js';
 import { createGeasteats } from '../server/geasteats.js';
+import { registerFrontend } from '../server/frontend.js';
 const database = `dapurops_auth_test_${crypto.randomBytes(6).toString('hex')}`;
 const admin = await mysql.createConnection({ host: '127.0.0.1', user: 'root', ...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u => [['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}) });
 await admin.query(`CREATE DATABASE \`${database}\``);
@@ -17,7 +18,7 @@ for (const sql of (await fs.readFile(new URL('../database/migrations/20261123-at
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-geasteats.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 const source = (await fs.readFile(new URL('../server/index.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace(/app\.listen\(PORT,[\s\S]*$/, 'return { app, loadWorkspace, hashPassword, validAttendanceEvidence };');
 const db = mysql.createPool({host:'127.0.0.1',user:'root',database,...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u=>[['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}),dateStrings:true});
-const { app, hashPassword, loadWorkspace, validAttendanceEvidence } = new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats);
+const { app, hashPassword, loadWorkspace, validAttendanceEvidence } = new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend);
 const server=app.listen(0,'127.0.0.1'); await new Promise(r=>server.once('listening',r));
 const base=`http://127.0.0.1:${server.address().port}/api`;
 async function request(path,body,method='POST',token) { const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:await r.json()}; }

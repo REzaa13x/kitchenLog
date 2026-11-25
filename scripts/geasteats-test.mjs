@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import mysql from 'mysql2/promise';
 import { registerExtraRoutes } from '../server/routes-extra.js';
+import { registerFrontend } from '../server/frontend.js';
 let roster=[{id:'S001',name:'Owner upstream',email:'admin@gmail.com',phone:'123',role:'admin',status:'active'},{id:'S981',name:'Fahreza',email:'fahreza@gmail.com',phone:null,role:'admin',status:'active'}];
 let outage=false;
 const upstream=http.createServer(async(req,res)=>{assert.equal(req.headers['x-api-key'],'test-only');res.setHeader('Content-Type','application/json');if(outage){res.writeHead(503);return res.end('{}');}if(req.method==='GET')return res.end(JSON.stringify({staff:roster}));let body='';for await(const chunk of req)body+=chunk;const b=JSON.parse(body);const staff=roster.find(s=>s.email===b.email);res.writeHead(staff&&b.password==='Up1234'?200:401);res.end(JSON.stringify(staff&&b.password==='Up1234'?{staff}:{}));});
@@ -18,7 +19,7 @@ for(const name of ['20261123-staff-accounts.sql','20261123-attendance-cleanlines
 const db=mysql.createPool({...options,database,dateStrings:true});
 let createGeasteats;try{({createGeasteats}=await import('../server/geasteats.js'));}catch(e){if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;}
 const source=(await fs.readFile(new URL('../server/index.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'').replace(/app\.listen\(PORT,[\s\S]*$/,'return {app,hashPassword};');
-const {app,hashPassword}=new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats);
+const {app,hashPassword}=new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend);
 const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
 async function request(path,body,token,method='POST'){const r=await fetch(`http://127.0.0.1:${server.address().port}/api`+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:await r.json()};}
 try{

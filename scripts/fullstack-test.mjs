@@ -1,0 +1,5 @@
+import assert from 'node:assert/strict';
+import express from 'express';
+import { registerFrontend } from '../server/frontend.js';
+const app=express();app.use('/api',(_,res)=>res.status(404).json({error:'missing'}));registerFrontend(app);const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}`;
+try{for(const path of ['/','/today']){const r=await fetch(base+path,{headers:{accept:'text/html'}});assert.equal(r.status,200);assert.match(await r.text(),/<html/);assert.match(r.headers.get('cache-control'),/no-cache/);}for(const path of ['/.env','/server/index.js','/package.json','/assets/missing.js'])assert.equal((await fetch(base+path)).status,404,path);const r=await fetch(base+'/api/missing');assert.equal(r.status,404);assert.match(r.headers.get('content-type'),/json/);console.log('PASS single app SPA, API isolation, no source/dotfile exposure');}finally{server.closeAllConnections();await new Promise(r=>server.close(r));}
