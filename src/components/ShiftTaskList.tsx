@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Circle, ClipboardList, Loader2, RotateCw } from 'lucide-react';
 import { useKitchen } from '../storage/kitchenContext';
 import type { ShiftType } from '../types/kitchen';
@@ -37,8 +37,16 @@ export const ShiftTaskList: React.FC<ShiftTaskListProps> = ({ date, shift, staff
   const [error, setError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
+  // Fungsi dari context berubah identitas setiap render provider. Menaruhnya
+  // langsung di dependency useEffect membuat daftar tugas memuat ulang terus
+  // (fetch berulang) sehingga halaman terasa berat. Simpan di ref agar efek
+  // hanya bergantung pada tanggal & shift.
+  const fetchRef = useRef(fetchShiftTasks);
+  fetchRef.current = fetchShiftTasks;
+
   const load = useCallback(async () => {
-    if (!fetchShiftTasks) {
+    const fetcher = fetchRef.current;
+    if (!fetcher) {
       setLoading(false);
       setError('Rekap pekerjaan hanya tersedia pada mode MySQL.');
       return;
@@ -46,7 +54,7 @@ export const ShiftTaskList: React.FC<ShiftTaskListProps> = ({ date, shift, staff
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchShiftTasks({ date, shift });
+      const data = await fetcher({ date, shift });
       if (!data) {
         setError('Gagal memuat rekap pekerjaan.');
         setTasks([]);
@@ -58,7 +66,7 @@ export const ShiftTaskList: React.FC<ShiftTaskListProps> = ({ date, shift, staff
     } finally {
       setLoading(false);
     }
-  }, [date, shift, fetchShiftTasks]);
+  }, [date, shift]);
 
   useEffect(() => {
     void load();

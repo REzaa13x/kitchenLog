@@ -25,7 +25,8 @@
     "verify:resilience": "node scripts/verify-resilience-browser.cjs",
     "backup:daily": "node scripts/backup-daily.mjs",
     "test:shift-tasks": "node scripts/shift-tasks-test.mjs",
-    "verify:shift-tasks": "node scripts/verify-shift-tasks-browser.cjs"
+    "verify:shift-tasks": "node scripts/verify-shift-tasks-browser.cjs",
+    "verify:shift-tasks-perf": "node scripts/verify-shift-tasks-perf.cjs"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

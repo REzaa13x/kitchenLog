@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Download, Loader2, RefreshCw, ShieldCheck, Wrench } from 'lucide-react';
 import { useKitchen } from '../storage/kitchenContext';
 import type {
@@ -63,15 +63,23 @@ export const OperationalReportPage: React.FC = () => {
   const [audit, setAudit] = useState<AttendanceAuditEntry[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Fungsi context berubah identitas tiap render provider; simpan di ref agar
+  // efek tidak memicu fetch berulang (penyebab halaman terasa berat).
+  const fetchReportRef = useRef(fetchOperationalReport);
+  fetchReportRef.current = fetchOperationalReport;
+  const fetchAuditRef = useRef(fetchAttendanceAudit);
+  fetchAuditRef.current = fetchAttendanceAudit;
+
   const load = useCallback(async () => {
-    if (!fetchOperationalReport) {
+    const fetcher = fetchReportRef.current;
+    if (!fetcher) {
       setError('Rekap operasional hanya tersedia pada mode MySQL.');
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchOperationalReport({ from, to, staffId: staffId || undefined });
+      const data = await fetcher({ from, to, staffId: staffId || undefined });
       setReport(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal memuat rekap.');
@@ -79,16 +87,17 @@ export const OperationalReportPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [fetchOperationalReport, from, to, staffId]);
+  }, [from, to, staffId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const loadAudit = useCallback(async () => {
-    if (!fetchAttendanceAudit) return;
-    setAudit(await fetchAttendanceAudit());
-  }, [fetchAttendanceAudit]);
+    const fetcher = fetchAuditRef.current;
+    if (!fetcher) return;
+    setAudit(await fetcher());
+  }, []);
 
   useEffect(() => {
     void loadAudit();

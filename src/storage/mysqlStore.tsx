@@ -677,12 +677,16 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const toggleShiftTask = async (payload: { date: string; shift: ShiftType; taskKey: string; done: boolean; note?: string }): Promise<ActionResult> => {
     const ctx = requireReady();
     if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
-    return wrap(
-      async () => {
-        await call('/shift-tasks', { method: 'PATCH', body: { workspaceId: ctx.wsId, ...payload } });
-      },
-      payload.done ? 'Tugas ditandai selesai.' : 'Tanda selesai dibatalkan.'
-    );
+    try {
+      // Sengaja TIDAK memakai `wrap`: wrap memuat ulang seluruh /api/state
+      // (semua user, absensi, laporan) setiap centang, sehingga terasa lemot.
+      // Centang hanya mengubah satu baris, jadi cukup satu PATCH ringan.
+      await call('/shift-tasks', { method: 'PATCH', body: { workspaceId: ctx.wsId, ...payload } });
+      return { ok: true, message: payload.done ? 'Tugas ditandai selesai.' : 'Tanda selesai dibatalkan.' };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal menyimpan centang.';
+      return { ok: false, message: msg };
+    }
   };
 
   const value: KitchenContextValue = {
