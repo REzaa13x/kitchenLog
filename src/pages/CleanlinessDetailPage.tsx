@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, MessageSquareText, Save, Sparkles } from 'lucide-react';
 import { HandoverSummaryBox } from '../components/HandoverSummaryBox';
+import { CleanlinessFollowupCard } from '../components/CleanlinessFollowupCard';
 import { PhotoViewer } from '../components/PhotoViewer';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { useKitchen } from '../storage/kitchenContext';
@@ -282,19 +283,19 @@ export const CleanlinessDetailPage: React.FC<CleanlinessDetailPageProps> = ({
                     </div>
 
                     {needsAction && (
-                      <div className="rounded-xl bg-[#FFFBEB] border border-[#FDE68A] p-4 space-y-3">
-                        <p className="text-sm text-[var(--kl-ink)]">
-                          <span className="font-semibold text-[#92400E]">Catatan Area: </span>
-                          {area.note}
-                        </p>
-                        {area.photoId && (
-                          <PhotoViewer
-                            photoId={area.photoId}
-                            alt={`Foto kendala area ${area.label}`}
-                            className="max-w-sm"
-                          />
-                        )}
-                      </div>
+                      <CleanlinessFollowupCard
+                        reportId={report.id}
+                        areaKey={area.key}
+                        areaLabel={area.label}
+                        note={area.note}
+                      />
+                    )}
+                    {needsAction && area.photoId && (
+                      <PhotoViewer
+                        photoId={area.photoId}
+                        alt={`Foto kendala area ${area.label}`}
+                        className="max-w-sm"
+                      />
                     )}
                   </div>
                 );

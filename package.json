@@ -19,7 +19,11 @@
     "api": "node server/index.js",
     "dev:firebase": "tsx server/dev.ts",
     "verify:api": "tsx scripts/verify-api.ts",
-    "build:hosting": "npm run build && npm prune --omit=dev"
+    "build:hosting": "npm run build && npm prune --omit=dev",
+    "verify:ops": "node scripts/operations-test.mjs && node scripts/photos-test.mjs && node scripts/backend-auth-test.mjs",
+    "verify:backup": "node scripts/backup-restore-test.mjs && node scripts/backup-daily-test.mjs",
+    "verify:resilience": "node scripts/verify-resilience-browser.cjs",
+    "backup:daily": "node scripts/backup-daily.mjs"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

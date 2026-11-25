@@ -7,6 +7,18 @@ import { registerStaffAccounts } from './staff-accounts.js';
 export function registerExtraRoutes(app, ctx) {
   const { getPool, requireAuth, loadWorkspace, uid, wibNow, isEmail } = ctx;
 
+  const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
+  const validId = id => typeof id === 'string' && id.length > 0 && id.length <= 128 && !/[\s,]/.test(id);
+  async function workspaceIdentities(connection, workspaceId) {
+    const [rows] = await connection.query(`SELECT u.id, u.email, s.id AS staff_id FROM users u
+      JOIN workspaces w ON w.id = ? AND FIND_IN_SET(u.email, REPLACE(w.member_emails, ' ', '')) > 0
+      LEFT JOIN staff s ON s.workspace_id = w.id AND s.email = u.email
+      UNION ALL SELECT s.id, s.email, s.id AS staff_id FROM staff s
+      WHERE s.workspace_id = ? AND NOT EXISTS (SELECT 1 FROM users u WHERE u.email = s.email)`, [workspaceId, workspaceId]);
+    const identities = new Map();
+    for (const row of rows) { identities.set(row.id, row); if (row.staff_id) identities.set(row.staff_id, row); }
+    return identities;
+  }
   const router = Router();
   router.use(requireAuth);
 
@@ -72,56 +84,72 @@ export function registerExtraRoutes(app, ctx) {
   // ---------- Jadwal shift ----------
   router.post('/assignments', async (req, res) => {
     const { workspaceId, date, shift, staffIds, picId } = req.body ?? {};
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return res.status(400).json({ error: 'Tanggal tidak valid.' });
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date < '1000-01-01' || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) return res.status(400).json({ error: 'Tanggal tidak valid.' });
     if (!['opening', 'closing'].includes(shift)) return res.status(400).json({ error: 'Shift tidak valid.' });
-    if (!Array.isArray(staffIds) || staffIds.length === 0) return res.status(400).json({ error: 'Pilih minimal satu staf.' });
-    if (!picId) return res.status(400).json({ error: 'PIC shift wajib dipilih.' });
+    if (!Array.isArray(staffIds) || staffIds.length === 0 || staffIds.length > 100 || !staffIds.every(validId) || new Set(staffIds).size !== staffIds.length || !validId(picId)) return res.status(400).json({ error: 'Pilih 1–100 staf unik dan PIC yang valid.' });
+    let connection;
     try {
       const access = await loadWorkspace(req.user.id, req.user.email, String(workspaceId || ''));
       if (access.error) return res.status(access.status).json({ error: access.error });
       if (!access.isSupervisor) return res.status(403).json({ error: 'Hanya Admin yang dapat mengatur jadwal.' });
-      const id = uid('asg').slice(0, 128);
-      await getPool().query(
-        `INSERT INTO assignments (id, workspace_id, shift_date, shift, staff_ids, pic_id)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE staff_ids = VALUES(staff_ids), pic_id = VALUES(pic_id)`,
-        [id, workspaceId, date, shift, staffIds.join(','), picId]
-      );
+      connection = await getPool().getConnection();
+      await connection.beginTransaction();
+      // Serialize creation too: a nonexistent assignment cannot yet be row-locked.
+      await connection.query('SELECT id FROM workspaces WHERE id = ? FOR UPDATE', [workspaceId]);
+      const identities = await workspaceIdentities(connection, workspaceId);
+      const ids = staffIds.map(id => identities.get(id)?.id);
+      const pic = identities.get(picId)?.id;
+      if (ids.some(id => !id) || new Set(ids).size !== ids.length || !pic || !ids.includes(pic)) fail(400, 'Staf dan PIC harus anggota dapur; PIC harus masuk jadwal.');
+      const [[existing]] = await connection.query('SELECT * FROM assignments WHERE workspace_id = ? AND shift_date = ? AND shift = ? FOR UPDATE', [workspaceId, date, shift]);
+      const id = existing?.id || uid('asg').slice(0, 128);
+      if (existing) {
+        const oldIds = existing.staff_ids.split(',').map(id => identities.get(id)?.id || id).sort();
+        const unchanged = JSON.stringify(oldIds) === JSON.stringify([...ids].sort()) && (identities.get(existing.pic_id)?.id || existing.pic_id) === pic;
+        if (!unchanged) {
+          const [attendance] = await connection.query('SELECT id FROM attendance WHERE workspace_id = ? AND assignment_id = ? LIMIT 1 FOR UPDATE', [workspaceId, id]);
+          if (attendance.length) fail(409, 'Jadwal dengan riwayat absensi tidak dapat diubah.');
+          await connection.query('UPDATE assignments SET staff_ids = ?, pic_id = ? WHERE id = ? AND workspace_id = ?', [ids.join(','), pic, id, workspaceId]);
+        }
+      } else await connection.query('INSERT INTO assignments (id, workspace_id, shift_date, shift, staff_ids, pic_id) VALUES (?, ?, ?, ?, ?, ?)', [id, workspaceId, date, shift, ids.join(','), pic]);
+      await connection.commit();
       res.status(201).json({ ok: true, id });
     } catch (err) {
-      res.status(500).json({ error: 'Gagal menyimpan jadwal.', detail: String(err?.message || err) });
-    }
+      if (connection) await connection.rollback();
+      res.status(err.status || 500).json({ error: err.status ? err.message : 'Gagal menyimpan jadwal.' });
+    } finally { connection?.release(); }
   });
 
   // ---------- Konfirmasi ketidakhadiran (Izin/Sakit/Alpa) ----------
   router.post('/attendance/absence', async (req, res) => {
     const { workspaceId, assignmentId, staffId, status, note } = req.body ?? {};
     if (!['Izin', 'Sakit', 'Alpa'].includes(status)) return res.status(400).json({ error: 'Status tidak valid.' });
+    if (!validId(staffId) || !validId(assignmentId) || typeof note !== 'string' || !note.trim() || note.length > 1000) return res.status(400).json({ error: 'Staf, jadwal, dan alasan 1–1000 karakter wajib diisi.' });
+    let connection;
     try {
       const access = await loadWorkspace(req.user.id, req.user.email, String(workspaceId || ''));
       if (access.error) return res.status(access.status).json({ error: access.error });
       if (!access.isSupervisor) return res.status(403).json({ error: 'Hanya Admin yang dapat mengonfirmasi ketidakhadiran.' });
 
-      const p = getPool();
-      const [asg] = await p.query('SELECT shift, shift_date FROM assignments WHERE id = ? AND workspace_id = ? LIMIT 1', [assignmentId, workspaceId]);
-      if (asg.length === 0) return res.status(404).json({ error: 'Jadwal shift tidak ditemukan.' });
-
-      const [staf] = await p.query('SELECT email FROM staff WHERE id = ? LIMIT 1', [staffId]);
-      const staffEmail = staf.length > 0 ? staf[0].email : '';
-
-      await p.query(
-        `INSERT INTO attendance (id, workspace_id, assignment_id, att_date, shift, staff_id, staff_email,
-           supervisor_status, supervisor_note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE supervisor_status = VALUES(supervisor_status),
-           supervisor_note = VALUES(supervisor_note)`,
-        [uid('att'), workspaceId, assignmentId, String(asg[0].shift_date).slice(0, 10), asg[0].shift,
-          staffId, staffEmail, status, note || null]
-      );
+      connection = await getPool().getConnection();
+      await connection.beginTransaction();
+      const [[asg]] = await connection.query('SELECT * FROM assignments WHERE id = ? AND workspace_id = ? FOR UPDATE', [assignmentId, workspaceId]);
+      if (!asg) fail(404, 'Jadwal shift tidak ditemukan.');
+      const identities = await workspaceIdentities(connection, workspaceId);
+      const target = identities.get(staffId);
+      if (!target) fail(400, 'Staf bukan anggota dapur.');
+      if (!asg.staff_ids.split(',').some(id => (identities.get(id)?.id || id) === target.id)) fail(403, 'Staf tidak ditugaskan pada jadwal ini.');
+      const [existing] = await connection.query('SELECT * FROM attendance WHERE workspace_id = ? AND assignment_id = ? AND (staff_id = ? OR staff_id = ? OR staff_email = ?) FOR UPDATE', [workspaceId, assignmentId, target.id, target.staff_id || target.id, target.email]);
+      if (existing.some(row => row.check_in_time != null || row.check_in_minutes != null || row.check_out_time != null || row.check_out_minutes != null || row.check_in_photo_id != null || row.check_out_photo_id != null)) fail(409, 'Absensi hadir tidak dapat diubah menjadi ketidakhadiran.');
+      if (existing.length > 1) fail(409, 'Riwayat absensi ganda memerlukan koreksi Admin.');
+      const id = existing[0]?.id || uid('att');
+      if (existing.length) await connection.query('UPDATE attendance SET supervisor_status = ?, supervisor_note = ? WHERE id = ? AND workspace_id = ?', [status, note.trim(), id, workspaceId]);
+      else await connection.query('INSERT INTO attendance (id, workspace_id, assignment_id, att_date, shift, staff_id, staff_email, supervisor_status, supervisor_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, workspaceId, assignmentId, asg.shift_date instanceof Date ? asg.shift_date.toISOString().slice(0, 10) : String(asg.shift_date).slice(0, 10), asg.shift, target.id, target.email, status, note.trim()]);
+      await connection.commit();
       res.json({ ok: true });
     } catch (err) {
-      res.status(500).json({ error: 'Gagal mengonfirmasi ketidakhadiran.', detail: String(err?.message || err) });
-    }
+      if (connection) await connection.rollback();
+      res.status(err.status || 500).json({ error: err.status ? err.message : 'Gagal mengonfirmasi ketidakhadiran.' });
+    } finally { connection?.release(); }
   });
 
   // ---------- Ringkasan serah terima (konfirmasi) ----------

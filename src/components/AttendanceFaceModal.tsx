@@ -13,7 +13,7 @@ interface AttendanceFaceModalProps {
   shift: ShiftType;
   currentTimeHHMM: string;
   onClose: () => void;
-  onConfirm: (photoId: string, cleanliness: AttendanceCleanliness) => Promise<{ ok: boolean; message: string }>;
+  onConfirm: (photoId: string, cleanliness: AttendanceCleanliness, clientRef: string) => Promise<{ ok: boolean; message: string; retryable?: boolean }>;
 }
 
 type PhotoTarget = 'kitchen' | 'face';
@@ -53,9 +53,16 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
   const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // True hanya bila percobaan submit/unggah benar-benar gagal (bukan validasi form).
+  const [submitFailed, setSubmitFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [areas, setAreas] = useState<Record<string, { status: string; note: string }>>({});
+  // Ref klien: percobaan ulang setelah gagal memakai ref yang sama agar server
+  // mengenali submit ganda, bukan membuat absensi kedua.
+  const clientRefRef = useRef<string>(`${mode}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+  // Foto wajah yang bytes-nya sudah ada tetapi unggahannya belum berhasil.
+  const pendingFaceRef = useRef<{ id: string; blob: Blob; source: 'camera' | 'upload' } | null>(null);
   const completedAreas = CLEANLINESS_AREAS_TEMPLATE.filter(a => areas[a.key]?.status &&
     (areas[a.key].status !== 'Perlu Ditangani' || areas[a.key].note.trim())).length;
   const busy = submitting || photoLoading;
@@ -179,9 +186,22 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
       if (session !== sessionRef.current) return;
       if (target === 'kitchen') setKitchenPhoto(photo.dataUrl);
       else {
-        const savedId = await savePhotoToIndexedDB(photo.blob, source);
-        if (session !== sessionRef.current) return;
-        setPhotoId(savedId);
+        // Simpan bytes + ID lebih dulu: walau unggah gagal, foto tidak perlu diambil ulang.
+        const pendingId = `photo-${crypto.randomUUID()}`;
+        pendingFaceRef.current = { id: pendingId, blob: photo.blob, source };
+        try {
+          const savedId = await savePhotoToIndexedDB(photo.blob, source, pendingId);
+          if (session !== sessionRef.current) return;
+          setPhotoId(savedId);
+          pendingFaceRef.current = null;
+        } catch (uploadError) {
+          if (session !== sessionRef.current) return;
+          // Foto tetap tampil dari memori; unggah diulang saat staf menekan Coba Lagi.
+          setPhotoId(pendingId);
+          setSubmitFailed(true);
+          const message = uploadError instanceof Error ? uploadError.message : 'Foto gagal diunggah.';
+          setSubmitError(`${message} Foto tetap tersimpan — tekan tombol coba lagi untuk mengunggah ulang.`);
+        }
       }
       stopCamera();
     } catch (error) {
@@ -203,22 +223,47 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
     });
     if (!kitchenPhoto) missing.push('Foto kondisi dapur wajib diambil atau diunggah.');
     if (!photoId) missing.push('Foto wajah wajib diambil atau diunggah untuk setiap check-in dan check-out.');
-    if (missing.length) { setSubmitError(missing.join(' ')); return; }
+    if (missing.length) { setSubmitFailed(false); setSubmitError(missing.join(' ')); return; }
     const session = sessionRef.current;
     busyRef.current = true;
     setSubmitting(true);
     setSubmitError(null);
     stopCamera();
     try {
+      // Unggah ulang foto wajah bila percobaan sebelumnya gagal (bytes tetap ada).
+      if (pendingFaceRef.current) {
+        const pending = pendingFaceRef.current;
+        try {
+          await savePhotoToIndexedDB(pending.blob, pending.source, pending.id);
+          pendingFaceRef.current = null;
+          if (session !== sessionRef.current) return;
+          setPhotoId(pending.id);
+        } catch (uploadError) {
+          if (session === sessionRef.current) {
+            setSubmitFailed(true);
+            setSubmitError(
+              uploadError instanceof Error
+                ? `${uploadError.message} Absensi belum dikirim. Periksa koneksi lalu tekan coba lagi.`
+                : 'Foto wajah belum berhasil diunggah. Absensi belum dikirim.'
+            );
+          }
+          return;
+        }
+      }
       const result = await onConfirm(photoId!, {
         areas: CLEANLINESS_AREAS_TEMPLATE.map(a => ({ key: a.key, status: areas[a.key].status as CleanlinessAreaStatus, note: areas[a.key].note.trim() })),
         kitchenPhotoDataUrl: kitchenPhoto,
-      });
+      }, clientRefRef.current);
       if (session !== sessionRef.current) return;
-      if (!result.ok) setSubmitError(result.message || 'Absensi gagal disimpan. Coba lagi.');
-      else close();
+      if (!result.ok) {
+        // Kegagalan TIDAK menutup modal: checklist & foto tetap ada untuk dicoba lagi.
+        setSubmitFailed(true);
+        setSubmitError(result.message || 'Absensi gagal disimpan. Coba lagi.');
+      } else {
+        close();
+      }
     } catch {
-      if (session === sessionRef.current) setSubmitError('Absensi gagal disimpan. Periksa koneksi lalu coba lagi.');
+      if (session === sessionRef.current) { setSubmitFailed(true); setSubmitError('Absensi gagal disimpan. Periksa koneksi lalu coba lagi dengan tombol di bawah.'); }
     } finally {
       if (session === sessionRef.current) {
         busyRef.current = false;
@@ -285,11 +330,18 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
           {cameraLoading && <p role="status">Membuka kamera…</p>}
           {photoLoading && <p role="status">Memproses foto…</p>}
           {cameraError && <p role="alert" className="text-sm text-[#92400E] bg-[#FEF3C7] rounded-xl p-3">{cameraError}</p>}
-          {submitError && <p role="alert" className="text-sm text-[#991B1B] bg-[#FEE2E2] rounded-xl p-3">{submitError}</p>}
+          {submitError && (
+            <div role="alert" className="text-sm text-[#991B1B] bg-[#FEE2E2] rounded-xl p-3 space-y-1">
+              <p className="font-semibold">Absensi belum tercatat.</p>
+              <p>{submitError}</p>
+              <p className="text-xs">Checklist dan foto tetap tersimpan di layar ini. Periksa koneksi, lalu tekan tombol coba lagi — isian tidak perlu diulang.</p>
+            </div>
+          )}
           <div className="flex gap-2">
             <button type="button" onClick={close} disabled={submitting} className={buttonClass}>Batal</button>
             <button type="button" disabled={busy} onClick={() => void handleSubmitAttendance()} className="min-h-[48px] flex-1 px-4 py-2.5 rounded-xl bg-[var(--kl-accent)] text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center justify-center gap-2">
-              <CheckCircle2 className="w-4 h-4" aria-hidden="true" />{submitting ? 'Menyimpan…' : `Konfirmasi ${actionLabel}`}
+              <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+              {submitting ? 'Menyimpan…' : submitFailed ? `Coba Lagi ${actionLabel}` : `Konfirmasi ${actionLabel}`}
             </button>
           </div>
         </div>

@@ -13,12 +13,14 @@ import {
   LogOut,
   PackageOpen,
   Users,
+  BarChart3,
 } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CleanlinessDetailPage } from './pages/CleanlinessDetailPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { ItemReportsPage } from './pages/ItemReportsPage';
 import { LoginPage } from './pages/LoginPage';
+import { OperationalReportPage } from './pages/OperationalReportPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { SupervisorDashboardPage } from './pages/SupervisorDashboardPage';
 import { TeamManagementPage } from './pages/TeamManagementPage';
@@ -116,6 +118,13 @@ function KitchenShell() {
             label: 'Jadwal Shift',
             mobileLabel: 'Jadwal',
             icon: CalendarDays,
+            mobileVisible: true,
+          },
+          {
+            id: 'reports',
+            label: 'Rekap Operasional',
+            mobileLabel: 'Rekap',
+            icon: BarChart3,
             mobileVisible: true,
           },
           {
@@ -382,6 +391,8 @@ function KitchenShell() {
               {view === 'schedule' && currentUser.role === 'supervisor' && <SchedulePage />}
 
               {view === 'team' && currentUser.role === 'supervisor' && <TeamManagementPage />}
+
+              {view === 'reports' && currentUser.role === 'supervisor' && <OperationalReportPage />}
 
               {view === 'cleanliness_detail' && (
                 <CleanlinessDetailPage

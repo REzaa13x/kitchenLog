@@ -16,6 +16,18 @@ interface PhotoSyncContext {
 }
 
 let activePhotoSyncContext: PhotoSyncContext | null = null;
+interface MysqlPhotoSyncContext { workspaceId: string; token: string }
+let mysqlPhotoContext: MysqlPhotoSyncContext | null = null;
+export function setActiveMysqlPhotoSyncContext(ctx: MysqlPhotoSyncContext | null): void {
+  mysqlPhotoContext = ctx ? { ...ctx } : null;
+  if (ctx) activePhotoSyncContext = null;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('kitchenlog-photo-context'));
+}
+async function cacheId(id: string, ctx = mysqlPhotoContext): Promise<string> {
+  if (!ctx) return id;
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ctx.token));
+  return `mysql:${ctx.workspaceId}:${Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('')}:${id}`;
+}
 
 /**
  * Firebase dimuat secara lazy HANYA saat ada konteks sinkronisasi foto.
@@ -140,7 +152,8 @@ export async function savePhotoToIndexedDB(
   source: PhotoSource,
   customId?: string
 ): Promise<string> {
-  const id = customId ?? `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const context = mysqlPhotoContext;
+  const id = customId ?? `photo-${crypto.randomUUID()}`;
   const { blob: compressedBlob, dataUrl } = await compressPhoto(blob);
   const createdAt = new Date().toISOString();
 
@@ -152,7 +165,23 @@ export async function savePhotoToIndexedDB(
     createdAt,
   };
 
-  await putPhotoInIndexedDB(record);
+  await putPhotoInIndexedDB({ ...record, id: await cacheId(id, context) });
+  if (context) {
+    const response = await fetch('/api/photos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${context.token}` },
+      body: JSON.stringify({ workspaceId: context.workspaceId, id, dataUrl, source }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      // Bytes sudah aman di IndexedDB; tandai agar pemanggil bisa mencoba unggah ulang.
+      throw Object.assign(new Error(error.error || 'Gagal menyinkronkan foto. Foto lokal tetap tersimpan.'), {
+        uploadFailed: true,
+        photoId: id,
+      });
+    }
+    return id;
+  }
 
   if (activePhotoSyncContext && dataUrl.length <= MAX_DATA_URL_LENGTH) {
     try {
@@ -176,17 +205,32 @@ export async function savePhotoToIndexedDB(
 
 export async function getPhotoFromIndexedDB(id: string): Promise<StoredPhoto | null> {
   if (!id) return null;
+  const context = mysqlPhotoContext;
   try {
+    const key = await cacheId(id, context);
     const database = await openPhotoDatabase();
-    return await new Promise((resolve, reject) => {
+    const local = await new Promise<StoredPhoto | null>((resolve, reject) => {
       const tx = database.transaction(STORE_NAME, 'readonly');
-      const req = tx.objectStore(STORE_NAME).get(id);
+      const req = tx.objectStore(STORE_NAME).get(key);
       req.onsuccess = () => resolve((req.result as StoredPhoto | undefined) ?? null);
       req.onerror = () => reject(req.error);
     });
-  } catch {
-    return null;
+    if (local) return { ...local, id };
+  } catch { /* Remote read still works when local storage is unavailable. */ }
+  if (context) {
+    try {
+      const response = await fetch(`/api/photos/${encodeURIComponent(id)}?workspaceId=${encodeURIComponent(context.workspaceId)}`, {
+        headers: { Authorization: `Bearer ${context.token}` }, cache: 'no-store',
+      });
+      if (!response.ok || mysqlPhotoContext !== context) return null;
+      const data = await response.json();
+      const blob = dataUrlToBlob(data.dataUrl);
+      const record: StoredPhoto = { id, blob, source: data.source, mimeType: blob.type, createdAt: data.createdAt };
+      try { await putPhotoInIndexedDB({ ...record, id: await cacheId(id, context) }); } catch { /* Preview need not depend on cache writes. */ }
+      return mysqlPhotoContext === context ? record : null;
+    } catch { return null; }
   }
+  return null;
 }
 
 export function getPhotoSourceLabel(source: PhotoSource | null | undefined): string {
@@ -200,6 +244,12 @@ export function useStoredPhoto(photoId: string | null | undefined): {
   source: PhotoSource | null;
   loading: boolean;
 } {
+  const [contextVersion, setContextVersion] = useState(0);
+  useEffect(() => {
+    const changed = () => setContextVersion(v => v + 1);
+    window.addEventListener('kitchenlog-photo-context', changed);
+    return () => window.removeEventListener('kitchenlog-photo-context', changed);
+  }, []);
   const [url, setUrl] = useState<string | null>(null);
   const [source, setSource] = useState<PhotoSource | null>(null);
   const [loading, setLoading] = useState<boolean>(Boolean(photoId));
@@ -286,7 +336,7 @@ export function useStoredPhoto(photoId: string | null | undefined): {
         URL.revokeObjectURL(createdObjectUrl);
       }
     };
-  }, [photoId]);
+  }, [photoId, contextVersion]);
 
   return { url, source, loading };
 }

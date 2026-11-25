@@ -43,6 +43,9 @@ export interface AttendanceRecord {
   durationMinutes: number | null;
   checkInPhotoId?: string | null;
   checkOutPhotoId?: string | null;
+  earlyLeaveMinutes?: number | null;
+  overnight?: boolean;
+  clientRef?: string | null;
   supervisorStatus: SupervisorAbsenceStatus | null;
   supervisorNote?: string;
   updatedAt: string;
@@ -113,6 +116,114 @@ export interface ItemReport {
 
 export type PhotoSource = 'camera' | 'upload';
 
+export type CleanlinessFollowupStatus = 'Perlu Ditangani' | 'Sedang Ditangani' | 'Selesai';
+
+/** Tindak lanjut satu temuan area kebersihan (punya PJ, status, dan bukti penyelesaian). */
+export interface CleanlinessFollowup {
+  id: string;
+  reportId: string;
+  areaKey: CleanlinessAreaKey;
+  areaLabel: string;
+  note: string;
+  status: CleanlinessFollowupStatus;
+  picId: string | null;
+  picEmail: string | null;
+  picName: string | null;
+  resolutionNote: string;
+  resolutionPhotoId: string | null;
+  resolvedById: string | null;
+  resolvedByEmail: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Satu baris rekap operasional (satu staf pada satu shift). */
+export interface OperationalReportRow {
+  date: string;
+  shift: ShiftType;
+  assignmentId: string;
+  staffId: string;
+  staffName: string;
+  staffEmail: string;
+  isPic: boolean;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+  durationMinutes: number | null;
+  overtimeMinutes: number;
+  overnight: boolean;
+  status: string;
+  overdue: boolean;
+  supervisorNote: string;
+  attendanceId: string | null;
+}
+
+export interface OperationalReportSummary {
+  from: string;
+  to: string;
+  totalScheduled: number;
+  hadir: number;
+  terlambat: number;
+  pulangAwal: number;
+  belumCheckout: number;
+  belumAbsen: number;
+  izin: number;
+  sakit: number;
+  alpa: number;
+  totalLateMinutes: number;
+  totalOvertimeMinutes: number;
+  avgDurationMinutes: number | null;
+  checklistBermasalah: number;
+  followupTerbuka: number;
+}
+
+export interface OperationalReport {
+  summary: OperationalReportSummary;
+  rows: OperationalReportRow[];
+  perStaff: {
+    staffId: string;
+    staffName: string;
+    scheduled: number;
+    hadir: number;
+    terlambat: number;
+    pulangAwal: number;
+    belumCheckout: number;
+    izin: number;
+    sakit: number;
+    alpa: number;
+    belumAbsen: number;
+    lateMinutes: number;
+  }[];
+  problemAreas: {
+    date: string;
+    shift: ShiftType;
+    reportId: string;
+    areaKey: string;
+    areaLabel: string;
+    note: string;
+    picName: string;
+    followupStatus: CleanlinessFollowupStatus;
+    followupPic: string | null;
+    resolvedAt: string | null;
+  }[];
+}
+
+/** Satu entri jejak audit koreksi absensi. */
+export interface AttendanceAuditEntry {
+  id: string;
+  attendanceId: string;
+  action: string;
+  actorId: string;
+  actorEmail: string;
+  actorName: string;
+  reason: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface StoredPhoto {
   id: string;
   blob: Blob;
@@ -126,6 +237,7 @@ export type AppView =
   | 'today'
   | 'supervisor_dashboard'
   | 'schedule'
+  | 'reports'
   | 'team'
   | 'cleanliness_detail'
   | 'item_reports'
@@ -137,5 +249,6 @@ export interface KitchenLogState {
   assignments: ShiftAssignment[];
   attendance: AttendanceRecord[];
   cleanlinessReports: CleanlinessReport[];
+  cleanlinessFollowups?: CleanlinessFollowup[];
   itemReports: ItemReport[];
 }

@@ -33,6 +33,9 @@ import type {
  * - Data milik sendiri, bisa dibuka di phpMyAdmin.
  */
 
+import { apiRequest } from '../lib/apiRequest';
+import { setActiveMysqlPhotoSyncContext } from './photoDb';
+
 const TOKEN_KEY = 'kitchenlog_token_v1';
 const WS_KEY = 'kitchenlog_ws_v1';
 const API_BASE = '/api';
@@ -122,24 +125,11 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const activeToken = opts.tokenOverride ?? token;
     if (activeToken) headers.Authorization = `Bearer ${activeToken}`;
-    const res = await fetch(API_BASE + path, {
-      method: opts.method || 'GET',
-      headers,
+    return apiRequest<T>(API_BASE + path, {
+      method: opts.method || 'GET', headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     });
-    let data: any = null;
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
-    }
-    if (!res.ok) {
-      const msg = data?.error || `Permintaan gagal (HTTP ${res.status}).`;
-      const err = new Error(msg) as Error & { status?: number };
-      err.status = res.status;
-      throw err;
-    }
-    return data as T;
+
   };
 
   const clearSession = () => {
@@ -167,12 +157,13 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
         assignments: data.assignments ?? [],
         attendance: data.attendance ?? [],
         cleanlinessReports: data.cleanlinessReports ?? [],
+        cleanlinessFollowups: data.cleanlinessFollowups ?? [],
         itemReports: data.itemReports ?? [],
       });
       setAccessStatus('ready');
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Gagal memuat data dapur.');
-      setAccessStatus('uninvited');
+      if (!background) setAccessStatus('uninvited');
     } finally {
       setWorkspaceLoading(false);
     }
@@ -214,6 +205,17 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     void bootstrap(token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // Bukti foto harus tersimpan di server agar Admin di perangkat lain bisa
+  // membukanya dan bukti tidak hilang saat cache browser dibersihkan.
+  useEffect(() => {
+    if (token && activeWorkspaceId) {
+      setActiveMysqlPhotoSyncContext({ workspaceId: activeWorkspaceId, token });
+    } else {
+      setActiveMysqlPhotoSyncContext(null);
+    }
+    return () => setActiveMysqlPhotoSyncContext(null);
+  }, [token, activeWorkspaceId]);
 
   // ---------- Autentikasi ----------
 
@@ -416,7 +418,8 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     assignmentId: string,
     staffId: string,
     checkInPhotoId: string,
-    cleanliness: import('../types/kitchen').AttendanceCleanliness
+    cleanliness: import('../types/kitchen').AttendanceCleanliness,
+    clientRef?: string
   ): Promise<ActionResult> => {
     const ctx = requireReady();
     if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
@@ -424,7 +427,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
       async () => {
         await call('/attendance/check-in', {
           method: 'POST',
-          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkInPhotoId || null, cleanliness },
+          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkInPhotoId || null, cleanliness, ...(clientRef ? { clientRef } : {}) },
         });
       },
       'Absen masuk tercatat.'
@@ -435,7 +438,8 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     assignmentId: string,
     staffId: string,
     checkOutPhotoId: string,
-    cleanliness: import('../types/kitchen').AttendanceCleanliness
+    cleanliness: import('../types/kitchen').AttendanceCleanliness,
+    clientRef?: string
   ): Promise<ActionResult> => {
     const ctx = requireReady();
     if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
@@ -443,10 +447,77 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
       async () => {
         await call('/attendance/check-out', {
           method: 'POST',
-          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkOutPhotoId || null, cleanliness },
+          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkOutPhotoId || null, cleanliness, ...(clientRef ? { clientRef } : {}) },
         });
       },
       'Absen keluar tercatat.'
+    );
+  };
+
+  const correctAttendance = async (payload: {
+    attendanceId?: string;
+    assignmentId?: string;
+    staffId?: string;
+    checkInTime?: string | null;
+    checkOutTime?: string | null;
+    clearCheckIn?: boolean;
+    clearCheckOut?: boolean;
+    supervisorStatus?: SupervisorAbsenceStatus | null;
+    supervisorNote?: string;
+    reason: string;
+  }): Promise<ActionResult> => {
+    const ctx = requireReady();
+    if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
+    return wrap(
+      async () => {
+        await call('/attendance/correction', { method: 'POST', body: { workspaceId: ctx.wsId, ...payload } });
+      },
+      'Koreksi absensi tersimpan beserta jejak audit.'
+    );
+  };
+
+  const fetchAttendanceAudit = async (attendanceId?: string): Promise<import('../types/kitchen').AttendanceAuditEntry[]> => {
+    const ctx = requireReady();
+    if (!ctx) return [];
+    try {
+      const query = `?workspaceId=${encodeURIComponent(ctx.wsId)}${attendanceId ? `&attendanceId=${encodeURIComponent(attendanceId)}` : ''}`;
+      const data = await call<{ audit: import('../types/kitchen').AttendanceAuditEntry[] }>(`/attendance/audit${query}`);
+      return data.audit ?? [];
+    } catch {
+      return [];
+    }
+  };
+
+  const fetchOperationalReport = async (params: {
+    from: string;
+    to: string;
+    staffId?: string;
+  }): Promise<import('../types/kitchen').OperationalReport | null> => {
+    const ctx = requireReady();
+    if (!ctx) return null;
+    const query = new URLSearchParams({ workspaceId: ctx.wsId, from: params.from, to: params.to });
+    if (params.staffId) query.set('staffId', params.staffId);
+    return call<import('../types/kitchen').OperationalReport>(`/reports/operational?${query.toString()}`);
+  };
+
+  const updateCleanlinessFollowup = async (payload: {
+    id: string;
+    status?: import('../types/kitchen').CleanlinessFollowupStatus;
+    picId?: string | null;
+    resolutionNote?: string;
+    resolutionPhotoId?: string | null;
+  }): Promise<ActionResult> => {
+    const ctx = requireReady();
+    if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
+    const { id, ...rest } = payload;
+    return wrap(
+      async () => {
+        await call(`/cleanliness/followups/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: { workspaceId: ctx.wsId, ...rest },
+        });
+      },
+      'Tindak lanjut kebersihan diperbarui.'
     );
   };
 
@@ -601,6 +672,10 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     removeStaffMember,
     checkIn,
     checkOut,
+    correctAttendance,
+    fetchAttendanceAudit,
+    fetchOperationalReport,
+    updateCleanlinessFollowup,
     confirmAbsenceStatus,
     upsertSchedule,
     submitCleanlinessReport,

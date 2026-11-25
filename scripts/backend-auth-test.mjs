@@ -7,6 +7,9 @@ import mysql from 'mysql2/promise';
 import { registerExtraRoutes } from '../server/routes-extra.js';
 import { createGeasteats } from '../server/geasteats.js';
 import { registerFrontend } from '../server/frontend.js';
+import { registerPhotos, assertAttendancePhoto } from '../server/photos.js';
+import { registerOperations } from '../server/operations.js';
+import { isShift, lateMinutes, summarizeAttendance } from '../server/attendance-rules.js';
 const database = `dapurops_auth_test_${crypto.randomBytes(6).toString('hex')}`;
 const admin = await mysql.createConnection({ host: '127.0.0.1', user: 'root', ...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u => [['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}) });
 await admin.query(`CREATE DATABASE \`${database}\``);
@@ -16,9 +19,11 @@ for (const sql of schema.replace(/CREATE DATABASE IF NOT EXISTS[\s\S]*?;/, '').r
 try { const migration = await fs.readFile(new URL('../database/migrations/20261123-staff-accounts.sql', import.meta.url),'utf8'); for (const sql of migration.split(';')) if(sql.trim()) await admin.query(sql); } catch(e) { if(e.code !== 'ENOENT') throw e; }
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261123-attendance-cleanliness.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-geasteats.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
+for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-photos.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
+for (const sql of (await fs.readFile(new URL('../database/migrations/20261126-operations.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 const source = (await fs.readFile(new URL('../server/index.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace(/app\.listen\(PORT,[\s\S]*$/, 'return { app, loadWorkspace, hashPassword, validAttendanceEvidence };');
 const db = mysql.createPool({host:'127.0.0.1',user:'root',database,...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u=>[['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}),dateStrings:true});
-const { app, hashPassword, loadWorkspace, validAttendanceEvidence } = new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend);
+const { app, hashPassword, loadWorkspace, validAttendanceEvidence } = new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend','registerPhotos','registerOperations','assertAttendancePhoto','isShift','lateMinutes','summarizeAttendance',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend,registerPhotos,registerOperations,assertAttendancePhoto,isShift,lateMinutes,summarizeAttendance);
 const server=app.listen(0,'127.0.0.1'); await new Promise(r=>server.once('listening',r));
 const base=`http://127.0.0.1:${server.address().port}/api`;
 async function request(path,body,method='POST',token) { const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:await r.json()}; }
@@ -49,7 +54,18 @@ try {
  assert.equal((await request('/attendance/check-in',{workspaceId:'ws',assignmentId:'missing',staffId:'u_supervisor_75d4f29fee493805'},'POST',signed.body.token)).status,403,'staff cannot check in another account');
  assert.equal((await request('/attendance/check-out',{workspaceId:'ws',assignmentId:'missing',staffId:'u_supervisor_75d4f29fee493805'},'POST',signed.body.token)).status,403,'staff cannot check out another account');
  const [[user]]=await admin.query('SELECT * FROM users WHERE username = ?', ['cook.one']);
- await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('shift','ws','2026-11-23','opening',?,?)",[created.body.id,created.body.id]);
+ // Aturan shift memakai tanggal WIB nyata: sediakan shift hari ini + shift kemarin.
+ const wibDate = (offsetDays = 0) => new Date(Date.now() + offsetDays * 86400000 + 7 * 3600000).toISOString().slice(0, 10);
+ const today = wibDate(0);
+ const yesterday = wibDate(-1);
+ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=', 'base64');
+ const seedPhoto = async (id, ownerId = user.id) => admin.query("INSERT INTO private_photos (workspace_id,id,user_id,source,mime_type,data) VALUES ('ws',?,?,'camera','image/png',?)", [id, ownerId, PNG]);
+ await seedPhoto('face-photo');
+ await seedPhoto('face-out');
+ await seedPhoto('x'.repeat(200));
+ await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('shift','ws',?,'opening',?,?)",[today,created.body.id,created.body.id]);
+ assert.equal((await request('/cleanliness',{workspaceId:'ws',date:today,shift:'opening',picId:'other',picName:'Forged',areas:[]},'POST',signed.body.token)).status,403,'cannot impersonate PIC');
+ assert.equal((await request('/items/missing/status',{workspaceId:'ws',status:'Selesai',resolutionNote:'fake'},'PATCH',signed.body.token)).status,403,'staff cannot resolve arbitrary item');
  const attendanceBody={workspaceId:'ws',assignmentId:'shift',staffId:user.id,photoId:'face-photo'};
  assert.equal((await request('/attendance/check-in',attendanceBody,'POST',signed.body.token)).status,400,'check-in requires cleanliness evidence');
  const areaKeys=['meja_persiapan','kompor_area_masak','wastafel','lantai','tempat_sampah','area_penyimpanan'];
@@ -72,21 +88,44 @@ try {
  const [[stored]]=await admin.query('SELECT check_in_cleanliness,check_out_cleanliness FROM attendance WHERE staff_id=?',[user.id]);
  assert.deepEqual(JSON.parse(stored.check_in_cleanliness),evidence,'database survives device photo storage loss');
  assert.deepEqual(JSON.parse(stored.check_out_cleanliness),outEvidence);
- await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('legacy','ws','2026-11-24','opening',?,?),('race','ws','2026-11-24','closing',?,?)",[user.id,user.id,created.body.id,created.body.id]);
- await admin.query("INSERT INTO attendance (id,workspace_id,assignment_id,att_date,shift,staff_id,staff_email,check_in_time,check_in_minutes) VALUES ('legacy-att','ws','legacy','2026-11-24','opening',?,?,'08:00',480)",[created.body.id,user.email]);
+ await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('legacy','ws',?,'closing',?,?),('past','ws',?,'opening',?,?),('future','ws',?,'closing',?,?),('race','ws',?,'closing',?,?)",[yesterday,user.id,user.id,wibDate(-2),user.id,user.id,wibDate(1),user.id,user.id,today,user.id,user.id]);
+ await admin.query("INSERT INTO attendance (id,workspace_id,assignment_id,att_date,shift,staff_id,staff_email,check_in_time,check_in_minutes) VALUES ('legacy-att','ws','legacy',?,'closing',?,?,'13:00',780)",[yesterday,created.body.id,user.email]);
  const legacyState=(await request('/state?workspaceId=ws',undefined,'GET',signed.body.token)).body.attendance.find(a=>a.id==='legacy-att');
  assert.equal(legacyState.staffId,user.id,'legacy attendance maps staff ID to user');
  assert.equal(legacyState.checkInCleanliness,null,'pre-migration evidence stays null');
+ // Absensi yang tercatat pada shift kemarin tetap boleh ditutup (lupa checkout / lewat tengah malam).
+ assert.equal((await request('/attendance/check-in',{...attendanceBody,assignmentId:'past',photoId:'face-out',cleanliness:evidence},'POST',signed.body.token)).status,409,'opening shift from two days ago cannot be started');
+ assert.equal((await request('/attendance/check-in',{...attendanceBody,assignmentId:'future',photoId:'face-out',cleanliness:evidence},'POST',signed.body.token)).status,409,'future shift cannot be started early');
+ assert.equal((await request('/attendance/check-in',{...attendanceBody,assignmentId:'shift',photoId:'not-mine',cleanliness:evidence},'POST',signed.body.token)).status,400,'face photo must be stored on server and owned');
+ assert.equal((await request('/attendance/check-out',{...attendanceBody,assignmentId:'shift',photoId:'face-out',cleanliness:evidence},'POST',signed.body.token)).status,409,'check-out needs an open check-in, not just a photo');
  const jpegEvidence={...evidence,kitchenPhotoDataUrl:'data:image/jpeg;base64,/9j/2Q=='};
- assert.equal((await request('/attendance/check-out',{...attendanceBody,assignmentId:'legacy',cleanliness:jpegEvidence},'POST',signed.body.token)).status,200,'legacy staff attendance can check out using canonical user ID');
+ const lateCheckout=await request('/attendance/check-out',{...attendanceBody,assignmentId:'legacy',photoId:'face-out',cleanliness:jpegEvidence},'POST',signed.body.token);
+ assert.equal(lateCheckout.status,200,'legacy staff attendance can check out using canonical user ID');
+ assert.equal(lateCheckout.body.overnight,true,'check-out after midnight is marked overnight');
+ assert.ok(lateCheckout.body.durationMinutes>0,'duration never negative across midnight');
  const maxPhoto=Buffer.alloc(2*1024*1024); Buffer.from('89504e470d0a1a0a','hex').copy(maxPhoto);
  const maxEvidence={...evidence,kitchenPhotoDataUrl:'data:image/png;base64,'+maxPhoto.toString('base64')};
  // Local MySQL defaults to 1MB packets; production inspected at 64MB. Validate the 2MB boundary without changing shared DB configuration.
  assert.equal(validAttendanceEvidence({...attendanceBody,cleanliness:maxEvidence}),true,'exactly 2MB decoded accepted');
  const raced=await Promise.all([1,2].map(()=>request('/attendance/check-in',{...attendanceBody,assignmentId:'race',photoId:'x'.repeat(200),cleanliness:evidence},'POST',signed.body.token)));
  assert.deepEqual(raced.map(r=>r.status).sort(),[200,409],'concurrent checkin prevents overwrite');
+ // Retry idempoten: ref klien sama tidak menggandakan absensi, walau permintaan paralel.
+ const clientRef='retry-checkin-0001';
+ const first=await request('/attendance/check-out',{...attendanceBody,assignmentId:'race',photoId:'face-out',clientRef,cleanliness:evidence},'POST',signed.body.token);
+ assert.equal(first.status,200,'first checkout recorded');
+ const retried=await Promise.all([1,2].map(()=>request('/attendance/check-out',{...attendanceBody,assignmentId:'race',photoId:'face-out',clientRef,cleanliness:evidence},'POST',signed.body.token)));
+ assert.deepEqual(retried.map(r=>r.status),[200,200],'same clientRef is idempotent, never a duplicate error');
+ assert.ok(retried.every(r=>r.body.duplicate===true),'retry acknowledged as duplicate');
+ const [[attCount]]=await admin.query("SELECT COUNT(*) AS n FROM attendance WHERE assignment_id='race'"); assert.equal(attCount.n,1,'retry never duplicates attendance rows');
+ assert.equal((await request('/attendance/check-out',{...attendanceBody,assignmentId:'race',photoId:'face-out',clientRef:'different-ref-0001',cleanliness:evidence},'POST',signed.body.token)).status,409,'different ref cannot overwrite a finished checkout');
  const webpEvidence={...evidence,kitchenPhotoDataUrl:'data:image/webp;base64,'+Buffer.from('RIFFxxxxWEBP').toString('base64')};
- const racedOut=await Promise.all([1,2].map(()=>request('/attendance/check-out',{...attendanceBody,assignmentId:'race',cleanliness:webpEvidence},'POST',signed.body.token)));
+ // Check-out paralel pada shift yang baru check-in: hanya satu yang menang.
+ // (Hapus dulu jadwal hari ini untuk closing, lalu buat jadwal paralel yang sah.)
+ await admin.query("DELETE FROM assignments WHERE workspace_id='ws' AND shift_date=? AND shift='closing'", [today]);
+ await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('race3','ws',?,'closing',?,?)",[today,user.id,user.id]);
+ const raceCheckIn=await request('/attendance/check-in',{...attendanceBody,assignmentId:'race3',photoId:'face-out',cleanliness:evidence},'POST',signed.body.token);
+ assert.equal(raceCheckIn.status,200,'parallel checkout fixture check-in recorded');
+ const racedOut=await Promise.all([1,2].map(()=>request('/attendance/check-out',{...attendanceBody,assignmentId:'race3',photoId:'face-out',cleanliness:webpEvidence},'POST',signed.body.token)));
  assert.deepEqual(racedOut.map(r=>r.status).sort(),[200,409],'concurrent checkout accepts WEBP, prevents overwrite');
  assert.match(user.password_hash,/^scrypt\$/); assert.notEqual(user.password_hash,account.password);
  const [[ws]]=await admin.query("SELECT * FROM workspaces WHERE id='ws'"); assert.ok(ws.member_emails.split(',').includes(user.email));

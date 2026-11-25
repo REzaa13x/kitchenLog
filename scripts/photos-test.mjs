@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
+import express from 'express';
+import mysql from 'mysql2/promise';
+const photos = await import('../server/photos.js').catch(() => ({}));
+assert.equal(typeof photos.registerPhotos, 'function', 'authenticated photo routes must exist');
+const config = process.env.TEST_MYSQL_URL ? ((u) => ({host:u.hostname,port:Number(u.port)||3306,user:decodeURIComponent(u.username),password:decodeURIComponent(u.password)}))(new URL(process.env.TEST_MYSQL_URL)) : {host:'127.0.0.1',user:'root'};
+const database = `dapurops_photos_test_${crypto.randomBytes(6).toString('hex')}`;
+const db = await mysql.createConnection(config);
+let server;
+try {
+ await db.query(`CREATE DATABASE \`${database}\``); await db.query(`USE \`${database}\``);
+ const schema = await fs.readFile(new URL('../database/dapurops-schema.sql',import.meta.url),'utf8');
+ for(const sql of schema.replace(/CREATE DATABASE IF NOT EXISTS[\s\S]*?;/,'').replace(/USE `ngola_dapurops`;/,'').split(';')) if(sql.trim()) await db.query(sql);
+ for(const sql of (await fs.readFile(new URL('../database/migrations/20261125-photos.sql',import.meta.url),'utf8')).split(';')) if(sql.trim()) await db.query(sql);
+ await db.query("INSERT INTO users (id,email,password_hash,name,role) VALUES ('cook','cook@test.invalid','unused','Cook','staff'),('peer','peer@test.invalid','unused','Peer','staff'),('admin','admin@test.invalid','unused','Admin','supervisor')");
+ await db.query("INSERT INTO sessions (token,user_id,expires_at) VALUES ('cook-token','cook',DATE_ADD(NOW(),INTERVAL 1 DAY)),('peer-token','peer',DATE_ADD(NOW(),INTERVAL 1 DAY)),('admin-token','admin',DATE_ADD(NOW(),INTERVAL 1 DAY))");
+ await db.query("INSERT INTO workspaces (id,kitchen_name,owner_id,owner_email,member_emails,supervisor_emails) VALUES ('ws','Test','admin','admin@test.invalid','cook@test.invalid,peer@test.invalid','admin@test.invalid'),('other','Other','peer','peer@test.invalid','','')");
+ const app=express(); app.use(express.json({limit:'1mb'}));
+ const requireAuth=async(req,res,next)=>{const [[user]]=await db.query('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires_at>NOW()',[req.headers.authorization?.replace(/^Bearer /,'')||'']);if(!user)return res.status(401).json({error:'Unauthorized'});req.user=user;next();};
+ const loadWorkspace=async(id,email,workspaceId)=>{const [[ws]]=await db.query('SELECT * FROM workspaces WHERE id=?',[workspaceId]);return !ws?{status:404,error:'Missing'}:ws.owner_id!==id&&!ws.member_emails.split(',').includes(email)?{status:403,error:'Forbidden'}:{ws,isSupervisor:id==='admin'};};
+ photos.registerPhotos(app,{getPool:()=>db,requireAuth,loadWorkspace});
+ server=app.listen(0,'127.0.0.1'); await new Promise(r=>server.once('listening',r));
+ const base=`http://127.0.0.1:${server.address().port}/api/photos`;
+ const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=';
+ const body={workspaceId:'ws',id:'face',source:'camera',dataUrl:image};
+ async function request(path='',data=body,token='cook-token',method='POST'){const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(method==='GET'?{}:{body:JSON.stringify(data)})});return {status:r.status,body:await r.json(),headers:r.headers};}
+ assert.equal((await request()).status,201,'authenticated member uploads private evidence');
+ assert.equal((await request('',body,null)).status,401);
+ assert.equal((await request('',{...body,workspaceId:'other'})).status,403);
+ for(const bad of [null,5,'data:image/png;base64,aGVsbG8=','data:image/jpeg;base64,'+image.split(',')[1],image+'!', 'data:image/png;base64,'+Buffer.alloc(512*1024+1).toString('base64')]) assert.equal((await request('',{...body,id:'invalid',dataUrl:bad})).status,400,'invalid signature, encoding or size rejected');
+ for(const field of [{id:''},{id:'x'.repeat(201)},{source:'invalid'},{workspaceId:5}]) assert.equal((await request('',{...body,...field})).status,400,'invalid metadata rejected');
+ assert.equal((await request()).status,200,'identical retry idempotent');
+ assert.equal((await request('',{...body,source:'upload'})).status,409,'same owner cannot overwrite');
+ assert.equal((await request('',body,'peer-token')).status,409,'other owner collision rejected');
+ const loaded=await request('/face?workspaceId=ws',undefined,'cook-token','GET');
+ assert.equal(loaded.status,200); assert.equal(loaded.body.dataUrl,image); assert.match(loaded.headers.get('cache-control'),/no-store/);
+ assert.equal((await request('/face?workspaceId=ws',undefined,'admin-token','GET')).status,200);
+ assert.equal((await request('/face?workspaceId=ws',undefined,'peer-token','GET')).status,404);
+ assert.equal((await request('/face?workspaceId=other',undefined,'cook-token','GET')).status,403);
+ await photos.assertAttendancePhoto(db,'ws','cook','face');
+ for(const args of [['ws','peer','face'],['other','cook','face'],['ws','cook','fake'],['ws','cook',null]]) await assert.rejects(()=>photos.assertAttendancePhoto(db,...args),e=>e.status===400);
+ await db.query('INSERT INTO photos (id,workspace_id,data_url,source,uploader_email) VALUES (?,?,?,?,?)',['legacy','ws',image,'camera','cook@test.invalid']);
+ assert.equal((await request('/legacy?workspaceId=ws',undefined,'cook-token','GET')).body.dataUrl,image,'existing legacy server photos remain readable');
+ assert.equal((await request('/legacy?workspaceId=ws',undefined,'peer-token','GET')).status,404);
+ await assert.rejects(()=>photos.assertAttendancePhoto(db,'ws','cook','legacy'),e=>e.status===400,'legacy cannot fabricate new attendance proof');
+ assert.equal((await request('',{...body,id:'legacy'},'peer-token')).status,409,'new API cannot shadow legacy evidence IDs');
+ const {tsImport}=await import('tsx/esm/api');
+ const frontend=await tsImport('../src/storage/photoDb.ts',import.meta.url);
+ assert.equal(typeof frontend.setActiveMysqlPhotoSyncContext,'function','explicit MySQL sync context required');
+ // Browser-only APIs: minimal in-memory IndexedDB/FileReader/Image adapters; real HTTP + MySQL remain exercised.
+ const local=new Map();
+ globalThis.window=new EventTarget();
+ globalThis.CustomEvent=class extends Event {constructor(type,options){super(type);this.detail=options.detail;}};
+ globalThis.indexedDB={open(){const request={};setTimeout(()=>{request.result={transaction(){const tx={objectStore(){return {put(record){local.set(record.id,record);setTimeout(()=>tx.oncomplete?.(),0);},get(id){const req={};setTimeout(()=>{req.result=local.get(id);req.onsuccess?.();},0);return req;}};}};return tx;}};request.onsuccess();},0);return request;}};
+ globalThis.Image=class {set src(_value){queueMicrotask(()=>this.onerror());}};
+ globalThis.FileReader=class {async readAsDataURL(blob){this.result=`data:${blob.type};base64,${Buffer.from(await blob.arrayBuffer()).toString('base64')}`;this.onloadend();}};
+ const originalFetch=globalThis.fetch;
+ globalThis.fetch=(url,options)=>originalFetch(typeof url==='string'&&url.startsWith('/api/')?base.replace('/api/photos','')+url:url,options);
+ try {
+  frontend.setActiveMysqlPhotoSyncContext({workspaceId:'ws',token:'cook-token'});
+  const blob=new Blob([Buffer.from(image.split(',')[1],'base64')],{type:'image/png'});
+  await frontend.savePhotoToIndexedDB(blob,'camera','browser-photo');
+  local.clear();
+  assert.equal((await frontend.getPhotoFromIndexedDB('browser-photo')).source,'camera','cache miss downloads authenticated server evidence');
+  frontend.setActiveMysqlPhotoSyncContext({workspaceId:'ws',token:'expired'});
+  await assert.rejects(()=>frontend.savePhotoToIndexedDB(blob,'camera','failed-photo'),/foto|sesi|Unauthorized/i,'failed server upload rejects caller');
+  assert.ok([...local.values()].some(p=>p.id.endsWith(':failed-photo')),'failed upload preserves local bytes');
+ } finally {globalThis.fetch=originalFetch;frontend.setActiveMysqlPhotoSyncContext(null);}
+ console.log('PASS MySQL upload, validation, immutability, authenticated cross-device reads, attendance ownership; frontend upload acknowledgment, authenticated cache miss, offline preservation');
+} finally {if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}await db.query(`DROP DATABASE IF EXISTS \`${database}\``);await db.end();}

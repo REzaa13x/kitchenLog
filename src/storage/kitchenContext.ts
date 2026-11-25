@@ -101,8 +101,30 @@ export interface KitchenContextValue {
     }
   ) => Promise<ActionResult>;
   removeStaffMember: (staffId: string) => Promise<ActionResult>;
-  checkIn: (assignmentId: string, staffId: string, checkInPhotoId: string, cleanliness: import('../types/kitchen').AttendanceCleanliness) => Promise<ActionResult>;
-  checkOut: (assignmentId: string, staffId: string, checkOutPhotoId: string, cleanliness: import('../types/kitchen').AttendanceCleanliness) => Promise<ActionResult>;
+  checkIn: (assignmentId: string, staffId: string, checkInPhotoId: string, cleanliness: import('../types/kitchen').AttendanceCleanliness, clientRef?: string) => Promise<ActionResult>;
+  checkOut: (assignmentId: string, staffId: string, checkOutPhotoId: string, cleanliness: import('../types/kitchen').AttendanceCleanliness, clientRef?: string) => Promise<ActionResult>;
+  /** Opsional: hanya mode MySQL yang punya koreksi absensi + audit. */
+  correctAttendance?: (payload: {
+    attendanceId?: string;
+    assignmentId?: string;
+    staffId?: string;
+    checkInTime?: string | null;
+    checkOutTime?: string | null;
+    clearCheckIn?: boolean;
+    clearCheckOut?: boolean;
+    supervisorStatus?: SupervisorAbsenceStatus | null;
+    supervisorNote?: string;
+    reason: string;
+  }) => Promise<ActionResult>;
+  fetchAttendanceAudit?: (attendanceId?: string) => Promise<import('../types/kitchen').AttendanceAuditEntry[]>;
+  fetchOperationalReport?: (params: { from: string; to: string; staffId?: string }) => Promise<import('../types/kitchen').OperationalReport | null>;
+  updateCleanlinessFollowup?: (payload: {
+    id: string;
+    status?: import('../types/kitchen').CleanlinessFollowupStatus;
+    picId?: string | null;
+    resolutionNote?: string;
+    resolutionPhotoId?: string | null;
+  }) => Promise<ActionResult>;
   confirmAbsenceStatus: (
     assignmentId: string,
     staffId: string,

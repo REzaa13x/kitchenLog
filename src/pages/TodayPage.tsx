@@ -27,6 +27,8 @@ import {
   SHIFT_META,
 } from '../utils/wibTime';
 
+import { visibleAssignments } from '../utils/visibleAssignments';
+
 interface TodayPageProps {
   onNavigateCleanlinessDetail: (date: string, shift: ShiftType) => void;
   onNavigateItemReports: () => void;
@@ -47,10 +49,9 @@ export const TodayPage: React.FC<TodayPageProps> = ({
 
   const todayAssignments = useMemo(() => {
     if (!currentUser) return [];
-    return state.assignments
-      .filter((a) => a.date === nowWib.date && a.staffIds.includes(currentUser.id))
+    return visibleAssignments(state.assignments, state.attendance, currentUser.id, nowWib.date)
       .sort((a, b) => (a.shift === 'opening' ? -1 : 1) - (b.shift === 'opening' ? -1 : 1));
-  }, [state.assignments, currentUser, nowWib.date]);
+  }, [state.assignments, state.attendance, currentUser, nowWib.date]);
 
   const todayOpeningReport = useMemo(
     () =>
@@ -470,14 +471,14 @@ export const TodayPage: React.FC<TodayPageProps> = ({
         shift={faceModal?.shift ?? 'opening'}
         currentTimeHHMM={nowWib.timeHHMM}
         onClose={() => setFaceModal(null)}
-        onConfirm={async (photoId, cleanliness) => {
+        onConfirm={async (photoId, cleanliness, clientRef) => {
           if (!faceModal) {
             return { ok: false, message: 'Sesi absensi tidak ditemukan.' };
           }
           const res =
             faceModal.mode === 'checkin'
-              ? await checkIn(faceModal.assignmentId, currentUser.id, photoId, cleanliness)
-              : await checkOut(faceModal.assignmentId, currentUser.id, photoId, cleanliness);
+              ? await checkIn(faceModal.assignmentId, currentUser.id, photoId, cleanliness, clientRef)
+              : await checkOut(faceModal.assignmentId, currentUser.id, photoId, cleanliness, clientRef);
           if (!res.ok) {
             setAttendanceFeedback((p) => ({
               ...p,

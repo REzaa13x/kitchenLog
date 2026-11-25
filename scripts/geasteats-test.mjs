@@ -6,6 +6,9 @@ import express from 'express';
 import mysql from 'mysql2/promise';
 import { registerExtraRoutes } from '../server/routes-extra.js';
 import { registerFrontend } from '../server/frontend.js';
+import { registerPhotos, assertAttendancePhoto } from '../server/photos.js';
+import { registerOperations } from '../server/operations.js';
+import { isShift, lateMinutes, summarizeAttendance } from '../server/attendance-rules.js';
 let roster=[{id:'S001',name:'Owner upstream',email:'admin@gmail.com',phone:'123',role:'admin',status:'active'},{id:'S981',name:'Fahreza',email:'fahreza@gmail.com',phone:null,role:'admin',status:'active'}];
 let outage=false;
 const upstream=http.createServer(async(req,res)=>{assert.equal(req.headers['x-api-key'],'test-only');res.setHeader('Content-Type','application/json');if(outage){res.writeHead(503);return res.end('{}');}if(req.method==='GET')return res.end(JSON.stringify({staff:roster}));let body='';for await(const chunk of req)body+=chunk;const b=JSON.parse(body);const staff=roster.find(s=>s.email===b.email);res.writeHead(staff&&b.password==='Up1234'?200:401);res.end(JSON.stringify(staff&&b.password==='Up1234'?{staff}:{}));});
@@ -15,11 +18,11 @@ const database=`dapurops_geasteats_test_${crypto.randomBytes(6).toString('hex')}
 const options={host:'127.0.0.1',user:'root',...(process.env.TEST_MYSQL_URL?Object.fromEntries((u=>[['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))):{})};
 const admin=await mysql.createConnection(options);await admin.query(`CREATE DATABASE \`${database}\``);await admin.query(`USE \`${database}\``);
 const schema=(await fs.readFile(new URL('../database/dapurops-schema.sql',import.meta.url),'utf8')).replace(/CREATE DATABASE IF NOT EXISTS[\s\S]*?;/,'').replace(/USE `ngola_dapurops`;/,'');for(const sql of schema.split(';'))if(sql.trim())await admin.query(sql);
-for(const name of ['20261123-staff-accounts.sql','20261123-attendance-cleanliness.sql','20261125-geasteats.sql']){try{for(const sql of (await fs.readFile(new URL('../database/migrations/'+name,import.meta.url),'utf8')).split(';'))if(sql.trim())await admin.query(sql);}catch(e){if(e.code!=='ENOENT')throw e;}}
+for(const name of ['20261123-staff-accounts.sql','20261123-attendance-cleanliness.sql','20261125-geasteats.sql','20261125-photos.sql','20261126-operations.sql']){try{for(const sql of (await fs.readFile(new URL('../database/migrations/'+name,import.meta.url),'utf8')).split(';'))if(sql.trim())await admin.query(sql);}catch(e){if(e.code!=='ENOENT')throw e;}}
 const db=mysql.createPool({...options,database,dateStrings:true});
 let createGeasteats;try{({createGeasteats}=await import('../server/geasteats.js'));}catch(e){if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;}
 const source=(await fs.readFile(new URL('../server/index.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'').replace(/app\.listen\(PORT,[\s\S]*$/,'return {app,hashPassword};');
-const {app,hashPassword}=new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend);
+const {app,hashPassword}=new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend','registerPhotos','registerOperations','assertAttendancePhoto','isShift','lateMinutes','summarizeAttendance',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend,registerPhotos,registerOperations,assertAttendancePhoto,isShift,lateMinutes,summarizeAttendance);
 const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
 async function request(path,body,token,method='POST'){const r=await fetch(`http://127.0.0.1:${server.address().port}/api`+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:await r.json()};}
 try{
