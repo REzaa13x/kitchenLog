@@ -122,7 +122,25 @@ TEST_BASE=http://127.0.0.1:4181 node scripts/verify-attendance-browser.cjs
 TEST_BASE=http://127.0.0.1:4181 node scripts/verify-resilience-browser.cjs
 ```
 
-## 10. Yang belum boleh diklaim selesai
+## 10. Temuan nyata saat deploy produksi (25 Nov 2026)
+
+Dicatat agar tidak terulang:
+
+1. **Cron panel tidak mewarisi environment backend.** `node scripts/backup-daily.mjs` gagal
+   `Missing/invalid database configuration`. Perbaikan: `backup-verify.mjs` kini memuat `.env`
+   repo sendiri (tanpa menimpa env asli) dan tetap gagal tertutup bila tidak ada.
+2. **`~` tidak di-expand** oleh cron panel. Perbaikan: `backup-daily.mjs` meng-expand `~` sendiri
+   dan selalu memakai path absolut.
+3. **Direktori kerja sandbox bisa bersifat sementara**, sehingga backup yang "PASS" bisa hilang
+   bersama sandbox. Karena itu backup wajib dikirim keluar server:
+   set `BACKUP_UPLOAD_URL` (+ `BACKUP_UPLOAD_TOKEN` bila perlu). Script akan keluar dengan
+   status `PARTIAL` dan exit code 1 bila unggahan gagal.
+4. **Redeploy tidak selalu memperbarui folder API.** Setelah redeploy, verifikasi berkas server
+   (`server/operations.js`, `attendance-rules.js`, `photos.js` ada) dan restart proses bila perlu.
+5. **SPA fallback** membuat URL apa pun (termasuk `/dapurops-backups/...`) membalas HTTP 200
+   berisi `index.html`. Jangan simpulkan kebocoran dari status 200 — periksa isi/`sha256`.
+
+## 11. Yang belum boleh diklaim selesai
 
 - Uji kamera pada **HP fisik** Android/iPhone dengan HTTPS.
 - Restore produksi penuh (drill sudah terbukti, restore produksi belum).
