@@ -8,6 +8,27 @@ import { createHash, randomBytes } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
+import { readFileSync, existsSync as existsSyncSync } from 'node:fs';
+
+// Cron/panel tidak selalu mewarisi env DB; muat .env repo bila ada (tanpa menimpa env asli).
+try {
+  const LF = String.fromCharCode(10), CR = String.fromCharCode(13);
+  const envPath = new URL('../.env', import.meta.url);
+  if (existsSyncSync(envPath)) {
+    const lines = readFileSync(envPath, 'utf8').split(LF);
+    for (const raw of lines) {
+      const line = raw.endsWith(CR) ? raw.slice(0, -1) : raw;
+      const eq = line.indexOf('=');
+      if (eq < 1) continue;
+      const key = line.slice(0, eq).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+      let value = line.slice(eq + 1).trim();
+      const quote = value[0];
+      if ((quote === '"' || quote === String.fromCharCode(39)) && value.endsWith(quote)) value = value.slice(1, -1);
+      if (process.env[key] === undefined) process.env[key] = value;
+    }
+  }
+} catch { /* env tidak tersedia: tetap gagal tertutup dengan pesan konfigurasi */ }
 
 const help = `Usage (Node 22+, server environment only):
   node --env-file=.env scripts/backup-verify.mjs backup <absolute-output.sql>
