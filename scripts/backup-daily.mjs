@@ -12,6 +12,7 @@
 //   DB_* / DATABASE_URL  sama seperti scripts/backup-verify.mjs
 //   BACKUP_VERIFY_*  akun restore drill (loopback saja)
 import { execFile } from 'node:child_process';
+import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -21,7 +22,10 @@ const run = promisify(execFile);
 const NAME_RE = /^dapurops-(\d{4})(\d{2})(\d{2})\.sql(\.json)?$/;
 
 function config() {
-  const path = resolve(process.env.BACKUP_PATH || join(process.cwd(), '..', 'dapurops-backups'));
+  const raw = process.env.BACKUP_PATH || join(process.cwd(), '..', 'dapurops-backups');
+  // Cron/shell tidak selalu meng-expand ~; lakukan sendiri agar path absolut.
+  const expanded = raw.startsWith('~') ? join(homedir(), raw.slice(1)) : raw;
+  const path = resolve(expanded);
   const keepDays = Number(process.env.BACKUP_KEEP_DAYS || 14);
   if (!Number.isInteger(keepDays) || keepDays < 1 || keepDays > 365) throw new Error('BACKUP_KEEP_DAYS harus 1–365.');
   const webroot = resolve(process.env.WEBROOT || process.cwd());
