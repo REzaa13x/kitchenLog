@@ -131,13 +131,17 @@ Dicatat agar tidak terulang:
    repo sendiri (tanpa menimpa env asli) dan tetap gagal tertutup bila tidak ada.
 2. **`~` tidak di-expand** oleh cron panel. Perbaikan: `backup-daily.mjs` meng-expand `~` sendiri
    dan selalu memakai path absolut.
-3. **Direktori kerja sandbox bisa bersifat sementara**, sehingga backup yang "PASS" bisa hilang
-   bersama sandbox. Karena itu backup wajib dikirim keluar server:
-   set `BACKUP_UPLOAD_URL` (+ `BACKUP_UPLOAD_TOKEN` bila perlu). Script akan keluar dengan
-   status `PARTIAL` dan exit code 1 bila unggahan gagal.
-4. **Redeploy tidak selalu memperbarui folder API.** Setelah redeploy, verifikasi berkas server
+3. **HOME (`~`) pada cron ternyata ephemeral** — backup "PASS" menghilang. Default kini
+   folder `dapurops-backups/` **di dalam situs** (persisten, terbukti ada di disk).
+   `BACKUP_UPLOAD_URL` tetap didukung untuk salinan keluar server.
+4. **Folder backup di dalam situs TIDAK terekspos web** (diuji dengan probe berkas:
+   `GET /dapurops-backups/...sql` → 404, manifest → 200 tapi isinya `index.html` SPA).
+   Tetap disarankan salinan off-host untuk bencana tingkat server.
+5. **Anti-timpa terbukti**: menjalankan backup dua kali di hari yang sama ditolak
+   (`Backup hari ini sudah ada ... Tidak ditimpa`) dengan exit code 1.
+6. **Redeploy tidak selalu memperbarui folder API.** Setelah redeploy, verifikasi berkas server
    (`server/operations.js`, `attendance-rules.js`, `photos.js` ada) dan restart proses bila perlu.
-5. **SPA fallback** membuat URL apa pun (termasuk `/dapurops-backups/...`) membalas HTTP 200
+7. **SPA fallback** membuat URL apa pun (termasuk `/dapurops-backups/...`) membalas HTTP 200
    berisi `index.html`. Jangan simpulkan kebocoran dari status 200 — periksa isi/`sha256`.
 
 ## 11. Yang belum boleh diklaim selesai
