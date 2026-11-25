@@ -11,32 +11,42 @@ Berlaku untuk staf shift Opening & Closing. Simpan halaman ini di HP (screenshot
 ## 2. Check-in (wajib, di awal shift)
 
 1. Tekan **Check-in** pada kartu shift Anda.
-2. Isi **6 area checklist** (Meja persiapan, Kompor, Wastafel, Lantai, Tempat sampah, Area penyimpanan).
-   - Pilih **Sudah Beres**, atau **Perlu Ditangani** + tulis catatan singkat.
-3. Ambil **Foto Dapur** (kamera belakang, tampak area dapur).
-4. Ambil **Foto Wajah** (kamera depan).
-5. Tekan **Konfirmasi Check-in**.
-6. Berhasil bila muncul pesan "Absen masuk tercatat" dan status berubah menjadi **Sudah Check-in**.
+2. Ambil **Foto Wajah** (kamera depan) — cukup ini saja untuk mencatat kehadiran.
+   - Kamera tidak bisa dibuka? Tekan **Unggah Foto** dan pilih foto wajah dari galeri.
+3. Tekan **Konfirmasi Check-in**.
+4. Berhasil bila muncul pesan "Absen masuk tercatat" dan status berubah menjadi **Sudah Check-in**.
 
-> Kamera tidak bisa dibuka? Tekan **Unggah Foto** dan pilih foto dari galeri. Ini tetap sah sebagai bukti.
+> Checklist kebersihan **tidak** diisi di sini. Checklist punya halaman sendiri (bagian 3), supaya absensi cepat walau sedang buru-buru.
 
-## 3. Check-out (wajib, di akhir shift)
+## 3. Checklist kebersihan (halaman Laporan Kebersihan)
 
-Sama seperti check-in, tetapi tekan **Check-out**. Checklist & foto diisi ulang sesuai kondisi **saat pulang** — bukan menyalin isian pagi.
+1. Buka menu **Laporan Kebersihan**.
+2. Di bagian atas ada **Checklist Kebersihan Saya (6 Area)** — ini milik Anda sendiri.
+3. Isi keenam area: **Sudah Beres**, atau **Perlu Ditangani** + catatan.
+4. Tekan **Simpan Checklist Saya**.
+5. Status di halaman itu ada dua, jangan tertukar:
+   - **Checklist Kebersihan Saya** → milik Anda, bisa diisi kapan saja.
+   - **Laporan Kebersihan PIC Shift** → laporan ringkasan satu shift, hanya diisi PIC shift.
+   Selama PIC belum mengirim, tulisan "Laporan PIC Belum Dikirim" itu **normal** dan tidak menghalangi checklist Anda.
+
+## 4. Check-out (wajib, di akhir shift)
+
+Sama seperti check-in: tekan **Check-out**, ambil **Foto Wajah**, lalu **Konfirmasi Check-out**.
+Isi/rapikan checklist kebersihan Anda **sebelum** check-out agar tercatat sebagai kondisi pulang.
 
 Jika Anda lupa check-out: aplikasi tetap mengizinkan check-out sampai **7 hari** setelah shift. Segera lakukan, atau minta Admin mengoreksi.
 
-## 4. Kalau sinyal jelek / gagal simpan
+## 5. Kalau sinyal jelek / gagal simpan
 
 Aplikasi **tidak akan mencatat absensi sukses** bila foto atau data gagal terkirim. Yang harus dilakukan:
 
 1. **Jangan tutup layar** dan jangan menekan Batal.
 2. Cek sinyal / pindah ke area yang lebih baik.
-3. Tekan **Coba Lagi**. Checklist dan foto **tidak perlu diisi ulang** — semuanya masih tersimpan di layar.
+3. Tekan **Coba Lagi**. Foto **tidak perlu diambil ulang** — masih tersimpan di layar.
 4. Bila tetap gagal: foto layar (screenshot) pesan error-nya, lalu hubungi Admin.
 5. **Jangan** menekan Check-in berkali-kali di HP lain untuk mengejar status — absensi ganda menyulitkan rekap.
 
-## 5. Temuan kebersihan
+## 6. Temuan kebersihan
 
 - Area yang Anda tandai **Perlu Ditangani** otomatis menjadi tugas tindak lanjut.
 - Bila Anda ditunjuk sebagai **penanggung jawab (PJ)**: buka **Laporan Kebersihan** → pilih tanggal & shift → pada area tersebut tekan **Tandai Sedang Ditangani**, lalu setelah beres isi **catatan + foto bukti** dan tekan **Tandai Selesai**.

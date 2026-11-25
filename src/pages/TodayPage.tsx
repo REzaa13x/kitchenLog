@@ -71,6 +71,17 @@ export const TodayPage: React.FC<TodayPageProps> = ({
     [state.itemReports]
   );
 
+  // Checklist kebersihan milik staf ini pada shift hari ini (bukan laporan PIC shift).
+  const myChecklistDone = useMemo(() => {
+    if (!currentUser) return false;
+    const shift = todayAssignments[0]?.shift;
+    if (!shift) return false;
+    const record = state.attendance.find(
+      (r) => r.staffId === currentUser.id && r.date === nowWib.date && r.shift === shift
+    );
+    return Boolean(record?.checkInCleanliness || record?.checkOutCleanliness);
+  }, [state.attendance, currentUser, nowWib.date, todayAssignments]);
+
   if (!currentUser) return null;
 
   return (
@@ -424,37 +435,30 @@ export const TodayPage: React.FC<TodayPageProps> = ({
         )}
       </section>
 
-      {/* Shortcut untuk melihat laporan kebersihan jika staf non-PIC ingin cek status */}
+      {/* Shortcut status checklist kebersihan staf (bukan laporan PIC shift) */}
       {!todayAssignments.some((a) => a.picId === currentUser.id) && (
         <section className="rounded-2xl border border-[var(--kl-border)] bg-[var(--kl-bg)] p-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 text-sm text-[var(--kl-ink-sub)]">
-            <ClipboardList className="w-4 h-4 text-[var(--kl-accent)]" aria-hidden="true" />
-            <span>
-              Status Laporan Kebersihan Shift Anda:{' '}
-              <strong>
-                {todayAssignments[0] &&
-                state.cleanlinessReports.some(
-                  (r) => r.date === nowWib.date && r.shift === todayAssignments[0].shift
-                )
-                  ? 'Sudah Dikirim'
-                  : 'Belum Dikirim'}
-              </strong>
-            </span>
+          <div className="flex items-start gap-2.5 text-sm text-[var(--kl-ink-sub)]">
+            <ClipboardList className="w-4 h-4 text-[var(--kl-accent)] mt-0.5" aria-hidden="true" />
+            <div className="space-y-0.5">
+              <span>
+                Checklist Kebersihan Anda:{' '}
+                <strong>{myChecklistDone ? 'Sudah Diisi' : 'Belum Diisi'}</strong>
+              </span>
+              <p className="text-xs text-[var(--kl-ink-muted)]">
+                Checklist 6 area diisi di halaman Laporan Kebersihan. Status laporan PIC shift berbeda dengan checklist pribadi Anda.
+              </p>
+            </div>
           </div>
-          {todayAssignments[0] &&
-            state.cleanlinessReports.some(
-              (r) => r.date === nowWib.date && r.shift === todayAssignments[0].shift
-            ) && (
-              <button
-                type="button"
-                onClick={() =>
-                  onNavigateCleanlinessDetail(nowWib.date, todayAssignments[0].shift)
-                }
-                className="min-h-[40px] px-3 py-1.5 rounded-lg bg-white border border-[var(--kl-border-strong)] text-xs font-semibold text-[var(--kl-accent)] hover:bg-[var(--kl-soft)]"
-              >
-                Lihat Detail
-              </button>
-            )}
+          {todayAssignments[0] && (
+            <button
+              type="button"
+              onClick={() => onNavigateCleanlinessDetail(nowWib.date, todayAssignments[0].shift)}
+              className="min-h-[40px] px-3 py-1.5 rounded-lg bg-white border border-[var(--kl-border-strong)] text-xs font-semibold text-[var(--kl-accent)] hover:bg-[var(--kl-soft)]"
+            >
+              {myChecklistDone ? 'Lihat Checklist' : 'Isi Checklist'}
+            </button>
+          )}
         </section>
       )}
 
@@ -471,14 +475,14 @@ export const TodayPage: React.FC<TodayPageProps> = ({
         shift={faceModal?.shift ?? 'opening'}
         currentTimeHHMM={nowWib.timeHHMM}
         onClose={() => setFaceModal(null)}
-        onConfirm={async (photoId, cleanliness, clientRef) => {
+        onConfirm={async (photoId, clientRef) => {
           if (!faceModal) {
             return { ok: false, message: 'Sesi absensi tidak ditemukan.' };
           }
           const res =
             faceModal.mode === 'checkin'
-              ? await checkIn(faceModal.assignmentId, currentUser.id, photoId, cleanliness, clientRef)
-              : await checkOut(faceModal.assignmentId, currentUser.id, photoId, cleanliness, clientRef);
+              ? await checkIn(faceModal.assignmentId, currentUser.id, photoId, undefined, clientRef)
+              : await checkOut(faceModal.assignmentId, currentUser.id, photoId, undefined, clientRef);
           if (!res.ok) {
             setAttendanceFeedback((p) => ({
               ...p,

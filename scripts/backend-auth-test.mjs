@@ -67,14 +67,17 @@ try {
  assert.equal((await request('/cleanliness',{workspaceId:'ws',date:today,shift:'opening',picId:'other',picName:'Forged',areas:[]},'POST',signed.body.token)).status,403,'cannot impersonate PIC');
  assert.equal((await request('/items/missing/status',{workspaceId:'ws',status:'Selesai',resolutionNote:'fake'},'PATCH',signed.body.token)).status,403,'staff cannot resolve arbitrary item');
  const attendanceBody={workspaceId:'ws',assignmentId:'shift',staffId:user.id,photoId:'face-photo'};
- assert.equal((await request('/attendance/check-in',attendanceBody,'POST',signed.body.token)).status,400,'check-in requires cleanliness evidence');
+ // Alur baru: bukti absensi cukup foto wajah; checklist diisi di halaman Kebersihan.
+ assert.equal((await request('/attendance/check-in',{...attendanceBody,photoId:'belum-diunggah'},'POST',signed.body.token)).status,400,'check-in requires a stored face photo');
+ assert.equal((await request('/attendance/check-in',{workspaceId:'ws',assignmentId:'shift',staffId:user.id},'POST',signed.body.token)).status,400,'check-in requires face photo id');
  const areaKeys=['meja_persiapan','kompor_area_masak','wastafel','lantai','tempat_sampah','area_penyimpanan'];
  const photo='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=';
  const evidence={areas:areaKeys.map(key=>({key,status:'Sudah Beres',note:''})),kitchenPhotoDataUrl:photo};
  const invalidEvidence=[{}, {...evidence,areas:[]}, {...evidence,areas:[...evidence.areas.slice(0,5),evidence.areas[0]]}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,key:'unknown'})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,status:'bad'})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,status:'Perlu Ditangani',note:' '})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,note:'x'.repeat(1001)})}, {...evidence,kitchenPhotoDataUrl:''}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,aGVsbG8='}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,!!!!'}, {...evidence,kitchenPhotoDataUrl:photo.replace('image/png','image/jpeg')}, {...evidence,kitchenPhotoDataUrl:photo.replace('image/png','image/svg+xml')}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,'+Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),Buffer.alloc(2*1024*1024)]).toString('base64')}];
  for(const action of ['check-in','check-out']) {
-  for(const cleanliness of [undefined,...invalidEvidence]) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,cleanliness},'POST',signed.body.token)).status,400,`${action} rejects invalid evidence`);
-  for(const photoId of [undefined,null,4,' ','x'.repeat(201)]) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,cleanliness:evidence,photoId},'POST',signed.body.token)).status,400,`${action} requires valid face photo ID`);
+  // Klien lama yang masih mengirim checklist tidak valid tetap ditolak (kompatibilitas).
+  for(const cleanliness of invalidEvidence) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,cleanliness},'POST',signed.body.token)).status,400,`${action} rejects invalid evidence payload`);
+  for(const photoId of [undefined,null,4,' ','x'.repeat(201)]) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,photoId},'POST',signed.body.token)).status,400,`${action} requires valid face photo ID`);
  }
  assert.equal((await request('/attendance/check-out',{...attendanceBody,cleanliness:evidence},'POST',signed.body.token)).status,409,'checkout requires prior checkin');
  for(const action of ['check-in','check-out']) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,staffId:'u_supervisor_75d4f29fee493805',cleanliness:evidence},'POST',token)).status,403,'unassigned admin cannot record attendance');

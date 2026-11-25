@@ -519,7 +519,12 @@ function attendanceHandler(action) {
   return async (req, res) => {
     const { workspaceId, assignmentId, staffId, photoId } = req.body ?? {};
     if (staffId !== req.user.id) return res.status(403).json({ error: 'Anda hanya dapat mencatat absensi akun sendiri.' });
-    if (!validAttendanceEvidence(req.body)) return res.status(400).json({ error: 'Checklist kebersihan dan foto dapur wajib diisi.' });
+    // Bukti absensi = foto wajah. Checklist kebersihan diisi terpisah di halaman
+    // Laporan Kebersihan; bila klien lama masih mengirimnya, tetap divalidasi.
+    const hasCleanliness = req.body?.cleanliness !== undefined && req.body?.cleanliness !== null;
+    if (hasCleanliness && !validAttendanceEvidence(req.body)) {
+      return res.status(400).json({ error: 'Checklist kebersihan yang dikirim tidak lengkap atau tidak valid.' });
+    }
     if (typeof photoId !== 'string' || !photoId.trim()) return res.status(400).json({ error: 'Foto wajah wajib diambil atau diunggah.' });
     const clientRef = typeof req.body?.clientRef === 'string' && CLIENT_REF_RE.test(req.body.clientRef) ? req.body.clientRef : null;
     let connection;
@@ -575,7 +580,7 @@ function attendanceHandler(action) {
           await connection.query(
             `UPDATE attendance SET check_in_time = ?, check_in_minutes = ?, late_minutes = ?, check_in_photo_id = ?, check_in_cleanliness = ?, client_ref = ?
               WHERE id = ?`,
-            [now.time, minutes, late, photoId, JSON.stringify(req.body.cleanliness), clientRef, existing[0].id]
+            [now.time, minutes, late, photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), clientRef, existing[0].id]
           );
         } else {
           await connection.query(
@@ -583,7 +588,7 @@ function attendanceHandler(action) {
               check_in_time, check_in_minutes, late_minutes, check_in_photo_id, check_in_cleanliness, client_ref)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [uid('att'), workspaceId, assignmentId, asg.shiftDate, asg.shift, staffId, req.user.email,
-              now.time, minutes, late, photoId, JSON.stringify(req.body.cleanliness), clientRef]
+              now.time, minutes, late, photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), clientRef]
           );
         }
         await connection.commit();
@@ -605,7 +610,7 @@ function attendanceHandler(action) {
            early_leave_minutes = ?, overnight = ?, check_out_photo_id = ?, check_out_cleanliness = ?, client_ref = COALESCE(client_ref, ?)
          WHERE id = ?`,
         [now.time, minutes, summary.durationMinutes, summary.earlyLeaveMinutes, summary.overnight ? 1 : 0,
-          photoId, JSON.stringify(req.body.cleanliness), clientRef, open.id]
+          photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), clientRef, open.id]
       );
       await connection.commit();
       return res.json({
@@ -628,6 +633,87 @@ function attendanceHandler(action) {
 // Absensi masuk/pulang
 app.post('/api/attendance/check-in', requireAuth, attendanceHandler('check-in'));
 app.post('/api/attendance/check-out', requireAuth, attendanceHandler('check-out'));
+
+// Checklist kebersihan pribadi staf (terpisah dari laporan PIC shift).
+// Disimpan pada catatan absensi staf tersebut; bila belum ada absensi, dibuat
+// baris absensi tanpa jam masuk/pulang (statusnya tetap "Belum Absen").
+app.post('/api/cleanliness/my-checklist', requireAuth, async (req, res) => {
+  const b = req.body ?? {};
+  const workspaceId = String(b.workspaceId || '');
+  let connection;
+  try {
+    const access = await loadWorkspace(req.user.id, req.user.email, workspaceId);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!isShift(b.shift)) return res.status(400).json({ error: 'Shift tidak valid.' });
+    if (typeof b.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) return res.status(400).json({ error: 'Tanggal tidak valid.' });
+    const cleanliness = b.cleanliness;
+    if (!cleanliness || !Array.isArray(cleanliness.areas) || cleanliness.areas.length !== 6) {
+      return res.status(400).json({ error: 'Checklist enam area wajib lengkap.' });
+    }
+    const keys = new Set();
+    for (const area of cleanliness.areas) {
+      if (!cleanlinessAreaKeys.includes(area.key) || keys.has(area.key)) return res.status(400).json({ error: 'Area checklist tidak valid.' });
+      if (!['Sudah Beres', 'Perlu Ditangani'].includes(area.status)) return res.status(400).json({ error: 'Status area tidak valid.' });
+      if (typeof area.note !== 'string' || area.note.length > 1000) return res.status(400).json({ error: 'Catatan area terlalu panjang.' });
+      if (area.status === 'Perlu Ditangani' && !area.note.trim()) return res.status(400).json({ error: 'Catatan wajib untuk area Perlu Ditangani.' });
+      keys.add(area.key);
+    }
+
+    const [assignments] = await getPool().query(
+      'SELECT * FROM assignments WHERE workspace_id = ? AND shift_date = ? AND shift = ? LIMIT 1',
+      [workspaceId, b.date, b.shift]
+    );
+    const assignment = assignments[0];
+    if (!assignment) return res.status(404).json({ error: 'Jadwal shift tidak ditemukan untuk tanggal ini.' });
+
+    const [staff] = await getPool().query('SELECT id FROM staff WHERE workspace_id = ? AND email = ?', [workspaceId, req.user.email]);
+    const ids = [req.user.id, ...staff.map((s) => s.id)];
+    if (!String(assignment.staff_ids || '').split(',').some((id) => ids.includes(id.trim()))) {
+      return res.status(403).json({ error: 'Anda tidak ditugaskan pada shift ini.' });
+    }
+
+    connection = await getPool().getConnection();
+    await connection.beginTransaction();
+    const [existing] = await connection.query(
+      'SELECT * FROM attendance WHERE workspace_id = ? AND assignment_id = ? AND staff_id IN (?) FOR UPDATE',
+      [workspaceId, assignment.id, ids]
+    );
+    const payload = JSON.stringify(cleanliness);
+    let attendanceId;
+    if (existing.length) {
+      const row = existing[0];
+      // Checklist pulang bila sudah check-out, selain itu checklist masuk.
+      const column = row.check_out_time ? 'check_out_cleanliness' : 'check_in_cleanliness';
+      await connection.query(`UPDATE attendance SET ${column} = ? WHERE id = ?`, [payload, row.id]);
+      attendanceId = row.id;
+    } else {
+      attendanceId = uid('att');
+      await connection.query(
+        `INSERT INTO attendance (id, workspace_id, assignment_id, att_date, shift, staff_id, staff_email, check_in_cleanliness)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [attendanceId, workspaceId, assignment.id, b.date, b.shift, req.user.id, req.user.email, payload]
+      );
+    }
+
+    // Temuan "Perlu Ditangani" tetap harus punya tindak lanjut yang bisa dipantau Admin.
+    for (const area of cleanliness.areas.filter((a) => a.status === 'Perlu Ditangani')) {
+      await connection.query(
+        `INSERT INTO cleanliness_followups (id, workspace_id, report_id, area_key, area_label, note, status, pic_id, pic_email, pic_name)
+         VALUES (?, ?, ?, ?, ?, ?, 'Perlu Ditangani', ?, ?, ?)
+         ON DUPLICATE KEY UPDATE note = VALUES(note), updated_at = CURRENT_TIMESTAMP`,
+        [uid('fu'), workspaceId, `attendance:${attendanceId}`, area.key, AREA_LABELS[area.key] || area.key, area.note.trim(), req.user.id, req.user.email, req.user.name]
+      );
+    }
+
+    await connection.commit();
+    res.json({ ok: true, attendanceId });
+  } catch (err) {
+    if (connection) await connection.rollback().catch(() => {});
+    res.status(500).json({ error: 'Gagal menyimpan checklist kebersihan.' });
+  } finally {
+    connection?.release();
+  }
+});
 
 // Laporan kebersihan
 app.post('/api/cleanliness', requireAuth, async (req, res) => {

@@ -1,7 +1,9 @@
-// Run against an isolated local preview: TEST_BASE=http://127.0.0.1:4181 node scripts/verify-attendance-browser.cjs
-// Supply PUPPETEER_MODULE and CHROME_PATH if not installed/on PATH. All API traffic is intercepted.
+// Uji alur absensi baru: bukti CUKUP foto wajah (tanpa checklist/foto dapur),
+// lalu checklist kebersihan diisi terpisah di halaman Kebersihan.
+//
+// Jalankan: TEST_BASE=http://127.0.0.1:4181 node scripts/verify-attendance-browser.cjs
 const assert = require('node:assert/strict');
-const puppeteer = require(process.env.PUPPETEER_MODULE || 'puppeteer-core');
+const puppeteer = require(process.env.PUPPETEER_MODULE || 'C:/Users/asus/AppData/Local/hermes/cache/pptr/node_modules/puppeteer-core');
 
 (async () => {
   const base = process.env.TEST_BASE || 'http://127.0.0.1:4181';
@@ -15,98 +17,134 @@ const puppeteer = require(process.env.PUPPETEER_MODULE || 'puppeteer-core');
     const page = await browser.newPage();
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const user = { id: 'fixture-staff', name: 'Fixture non-PIC', email: 'fixture@example.invalid', role: 'staff' };
-    const workspace = { id: 'fixture', kitchenName: 'Fixture', role: 'staff' };
+    const workspace = { id: 'fixture', kitchenName: 'Fixture' };
     const assignment = { id: 'fixture-shift', date: today, shift: 'opening', staffIds: [user.id, 'pic'], picId: 'pic' };
     let attendance = [];
     const submissions = [];
+    const photoUploads = [];
+
     await page.setRequestInterception(true);
-    page.on('request', request => {
+    page.on('request', (request) => {
       const path = new URL(request.url()).pathname;
       if (!path.startsWith('/api/')) return void request.continue();
-      let data = {};
-      if (path === '/api/auth/me') data = { user, workspaces: [workspace] };
-      else if (path === '/api/workspaces') data = { workspaces: [workspace] };
-      else if (path === '/api/state') data = { kitchenName: 'Fixture', users: [user, { id: 'pic', name: 'Other PIC', role: 'staff' }], assignments: [assignment], attendance, cleanlinessReports: [], itemReports: [] };
-      else if (path.startsWith('/api/attendance/')) {
-        submissions.push(JSON.parse(request.postData()));
-        attendance = [{ id: 'fixture-att', assignmentId: assignment.id, date: today, staffId: user.id, shift: 'opening', checkInTime: '08:00', checkOutTime: submissions.length === 2 ? '12:00' : null }];
-        data = { ok: true };
+      const json = (status, body) => request.respond({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      if (path === '/api/auth/me') return json(200, { user, workspaces: [workspace] });
+      if (path === '/api/state') {
+        return json(200, {
+          kitchenName: 'Fixture',
+          users: [user, { id: 'pic', name: 'Other PIC', role: 'staff' }],
+          assignments: [assignment],
+          attendance,
+          cleanlinessReports: [],
+          cleanlinessFollowups: [],
+          itemReports: [],
+        });
       }
-      void request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+      if (path === '/api/photos') {
+        photoUploads.push(JSON.parse(request.postData() || '{}'));
+        return json(201, { id: JSON.parse(request.postData() || '{}').id });
+      }
+      if (path.startsWith('/api/attendance/')) {
+        const body = JSON.parse(request.postData() || '{}');
+        submissions.push({ path, body });
+        attendance = [{
+          id: 'fixture-att',
+          assignmentId: assignment.id,
+          date: today,
+          staffId: user.id,
+          shift: 'opening',
+          checkInTime: '06:05',
+          checkOutTime: submissions.length === 2 ? '12:00' : null,
+          lateMinutes: 5,
+          supervisorStatus: null,
+          updatedAt: '',
+        }];
+        return json(200, { ok: true, checkInTime: '06:05', checkOutTime: '12:00' });
+      }
+      return json(200, {});
     });
+
     await page.goto(base, { waitUntil: 'networkidle2' });
     await page.evaluate(() => {
       localStorage.setItem('kitchenlog_token_v1', 'fixture-not-real');
-      localStorage.setItem('kitchenlog_active_workspace_v1', 'fixture');
-      // Prove uploads work without createImageBitmap (Safari/older browser fallback).
+      localStorage.setItem('kitchenlog_ws_v1', 'fixture');
       window.createImageBitmap = undefined;
     });
     await page.reload({ waitUntil: 'networkidle2' });
+
     await page.evaluate(() => {
-      // Synthetic media, not physical hardware: real MediaStream/video/canvas/IndexedDB pipeline.
-      navigator.mediaDevices.getUserMedia = async constraints => {
-        const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 480;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = constraints.video?.facingMode?.ideal === 'environment' ? '#ff0000' : '#00ff00';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      navigator.mediaDevices.getUserMedia = async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640; canvas.height = 480;
+        canvas.getContext('2d').fillRect(0, 0, canvas.width, canvas.height);
         const stream = canvas.captureStream(10);
-        // Retain source canvas for the lifetime of its track.
         stream.canvas = canvas;
         return stream;
       };
     });
-    const click = async label => {
-      await page.waitForFunction(label => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === label && !b.matches(':disabled')), {}, label);
-      await page.evaluate(label => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === label).click(), label);
+
+    // Klik tombol pertama yang cocok & aktif; label tombol bisa berubah (mis. 'Coba Lagi Check-out').
+    const click = async (label) => {
+      await page.waitForFunction((text) => [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === text && !b.disabled), { timeout: 20000 }, label);
+      await page.evaluate((text) => {
+        const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text && !b.disabled);
+        if (!btn) throw new Error('Tombol tidak ditemukan: ' + text);
+        btn.click();
+      }, label);
     };
-    const waitIdle = () => page.waitForFunction(() => !document.querySelector('[role=dialog] button:last-child')?.matches(':disabled') && ![...document.querySelectorAll('[role=status]')].some(e => e.textContent.includes('Memproses')));
+
     for (const action of ['Check-in', 'Check-out']) {
       await click(action);
       await page.waitForSelector('[role=dialog]');
-      assert.equal(await page.$('video'), null, 'Camera never auto-starts');
+
+      // Modal tidak boleh lagi meminta checklist/foto dapur.
+      const dialogText = await page.$eval('[role=dialog]', (e) => e.textContent);
+      assert.match(dialogText, /Foto wajah \(wajib\)/, 'modal hanya meminta foto wajah');
+      assert.doesNotMatch(dialogText, /Checklist kebersihan wajib/, 'checklist tidak lagi di modal absensi');
+      assert.equal(await page.$$eval('[role=dialog] select', (els) => els.length), 0, 'tidak ada dropdown checklist di modal');
+
+      // Tanpa foto -> ditolak dengan pesan jelas.
       await click(`Konfirmasi ${action}`);
       await page.waitForSelector('[role=alert]');
-      assert.match(await page.$eval('[role=alert]', e => e.textContent), /Foto wajah wajib/);
-      for (const select of await page.$$('[role=dialog] select')) await select.select('Sudah Beres');
-      await page.select('[role=dialog] select', 'Perlu Ditangani');
+      assert.match(await page.$eval('[role=alert]', (e) => e.textContent), /Foto wajah wajib/);
+
+      // Ambil foto wajah lewat kamera simulasi.
+      await click('Buka Kamera Wajah');
+      await page.waitForFunction(() => document.querySelector('video')?.videoWidth > 0);
+      assert.ok(await page.$('[data-camera-guide="oval"]'), 'panduan wajah (oval) tampil');
+      await click('Ambil Foto Wajah');
+      await page.waitForFunction(() => !!document.querySelector('[role=dialog] img[alt*="Foto wajah"]'), { timeout: 20000 });
+      await page.waitForFunction(() => ![...document.querySelectorAll('[role=status]')].some((e) => e.textContent.includes('Memproses')));
+
+      // Simpan absensi.
       await click(`Konfirmasi ${action}`);
-      assert.match(await page.$eval('[role=alert]', e => e.textContent), /Isi catatan Meja persiapan/);
-      await page.type('[aria-label="Catatan Meja persiapan"]', 'Fixture note');
-      assert.match(await page.$eval('[role=dialog]', e => e.textContent), /Checklist lengkap: 6\/6/);
-      if (action === 'Check-in') {
-        for (const [label, guide] of [['Dapur', 'grid'], ['Wajah', 'oval']]) {
-          await click(`Buka Kamera ${label}`);
-          await page.waitForFunction(() => document.querySelector('video')?.videoWidth > 0);
-          assert.ok(await page.$(`[data-camera-guide="${guide}"]`));
-          await click(`Ambil Foto ${label}`);
-          await page.waitForFunction(() => !document.querySelector('video'));
-          await waitIdle();
-        }
-      } else {
-        // Independent file uploads exercise native image decode and real canvas JPEG compression.
-        await page.evaluate(() => { window.createImageBitmap = undefined; });
-        for (const target of ['kitchen', 'face']) {
-          await page.$eval(`#attendance-${target}-photo`, (input, target) => {
-            const canvas = document.createElement('canvas'); canvas.width = 1600; canvas.height = 1000;
-            const ctx = canvas.getContext('2d'); ctx.fillStyle = target === 'kitchen' ? '#ff0000' : '#00ff00'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            const bytes = Uint8Array.from(atob(canvas.toDataURL('image/png').split(',')[1]), c => c.charCodeAt(0));
-            const transfer = new DataTransfer(); transfer.items.add(new File([bytes], `${target}.png`, { type: 'image/png' }));
-            input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true }));
-          }, target);
-          await page.waitForFunction(target => target === 'kitchen' ? !!document.querySelector('img[alt*="dapur"]') : !!document.querySelector('img[alt*="Foto wajah"]'), {}, target);
-          await waitIdle();
-        }
-      }
-      await click(`Konfirmasi ${action}`);
-      await page.waitForFunction(() => !document.querySelector('[role=dialog]'));
-      console.log(`PASS non-PIC ${action}: missing requirements, notes, six statuses, separate kitchen/face ${action === 'Check-in' ? 'captures' : 'uploads'}`);
+      await page.waitForFunction(() => !document.querySelector('[role=dialog]'), { timeout: 20000 });
+      console.log(`PASS ${action}: cukup foto wajah, tanpa checklist di modal`);
     }
-    assert.equal(submissions.length, 2);
-    for (const payload of submissions) {
-      assert.ok(payload.photoId);
-      assert.equal(payload.cleanliness.areas.length, 6);
-      assert.match(payload.cleanliness.kitchenPhotoDataUrl, /^data:image\/jpeg;base64,/);
-      assert.ok(payload.cleanliness.kitchenPhotoDataUrl.length <= 2 * 1024 * 1024);
+
+    assert.equal(submissions.length, 2, 'dua absensi terkirim (masuk & pulang)');
+    for (const { body } of submissions) {
+      assert.ok(body.photoId, 'setiap absensi membawa photoId');
+      assert.equal(body.cleanliness, undefined, 'absensi tidak lagi mengirim checklist');
+      assert.ok(body.clientRef, 'clientRef dikirim untuk idempotensi');
     }
-  } finally { await browser.close(); }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+    assert.equal(photoUploads.length >= 2, true, 'foto wajah diunggah ke server');
+
+    // Halaman Kebersihan: status PIC vs checklist pribadi dibedakan.
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('button')];
+      const nav = buttons.find((b) => b.textContent.trim() === 'Kebersihan');
+      if (nav) nav.click();
+    });
+    await page.waitForFunction(() => document.body.textContent.includes('Checklist Kebersihan Saya (6 Area)'), { timeout: 15000 });
+    const cleanlinessText = await page.evaluate(() => document.body.textContent);
+    assert.match(cleanlinessText, /Laporan Kebersihan PIC Shift/, 'status laporan PIC dijelaskan terpisah');
+    assert.match(cleanlinessText, /Checklist Kebersihan Saya \(6 Area\)/, 'staf punya checklist sendiri');
+    console.log('PASS halaman Kebersihan: status PIC dan checklist pribadi dipisah');
+  } finally {
+    await browser.close();
+  }
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

@@ -418,7 +418,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     assignmentId: string,
     staffId: string,
     checkInPhotoId: string,
-    cleanliness: import('../types/kitchen').AttendanceCleanliness,
+    cleanliness?: import('../types/kitchen').AttendanceCleanliness,
     clientRef?: string
   ): Promise<ActionResult> => {
     const ctx = requireReady();
@@ -427,7 +427,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
       async () => {
         await call('/attendance/check-in', {
           method: 'POST',
-          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkInPhotoId || null, cleanliness, ...(clientRef ? { clientRef } : {}) },
+          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkInPhotoId || null, ...(cleanliness ? { cleanliness } : {}), ...(clientRef ? { clientRef } : {}) },
         });
       },
       'Absen masuk tercatat.'
@@ -438,7 +438,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     assignmentId: string,
     staffId: string,
     checkOutPhotoId: string,
-    cleanliness: import('../types/kitchen').AttendanceCleanliness,
+    cleanliness?: import('../types/kitchen').AttendanceCleanliness,
     clientRef?: string
   ): Promise<ActionResult> => {
     const ctx = requireReady();
@@ -447,7 +447,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
       async () => {
         await call('/attendance/check-out', {
           method: 'POST',
-          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkOutPhotoId || null, cleanliness, ...(clientRef ? { clientRef } : {}) },
+          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkOutPhotoId || null, ...(cleanliness ? { cleanliness } : {}), ...(clientRef ? { clientRef } : {}) },
         });
       },
       'Absen keluar tercatat.'
@@ -641,6 +641,24 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     );
   };
 
+  const submitMyCleanliness = async (payload: {
+    date: string;
+    shift: ShiftType;
+    cleanliness: import('../types/kitchen').AttendanceCleanliness;
+  }): Promise<ActionResult> => {
+    const ctx = requireReady();
+    if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
+    return wrap(
+      async () => {
+        await call('/cleanliness/my-checklist', {
+          method: 'POST',
+          body: { workspaceId: ctx.wsId, ...payload },
+        });
+      },
+      'Checklist kebersihan Anda tersimpan.'
+    );
+  };
+
   const value: KitchenContextValue = {
     state,
     workspaces,
@@ -676,6 +694,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     fetchAttendanceAudit,
     fetchOperationalReport,
     updateCleanlinessFollowup,
+    submitMyCleanliness,
     confirmAbsenceStatus,
     upsertSchedule,
     submitCleanlinessReport,

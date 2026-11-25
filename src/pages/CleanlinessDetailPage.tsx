@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, MessageSquareText, Save, Sparkles } from 'lucide-react';
 import { HandoverSummaryBox } from '../components/HandoverSummaryBox';
 import { CleanlinessFollowupCard } from '../components/CleanlinessFollowupCard';
+import { MyCleanlinessChecklist } from '../components/MyCleanlinessChecklist';
 import { PhotoViewer } from '../components/PhotoViewer';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { useKitchen } from '../storage/kitchenContext';
@@ -133,19 +134,24 @@ export const CleanlinessDetailPage: React.FC<CleanlinessDetailPageProps> = ({
       </div>
 
       {!report ? (
-        <div className="rounded-2xl border border-[var(--kl-border)] bg-white p-8 text-center space-y-2">
-          <div className="flex justify-center">
-            <StatusIndicator label="Belum Dikirim" tone="warning" size="md" />
+        <div className="space-y-5">
+          <div className="rounded-2xl border border-[var(--kl-border)] bg-white p-6 text-center space-y-2">
+            <div className="flex justify-center">
+              <StatusIndicator label="Laporan PIC Belum Dikirim" tone="warning" size="md" />
+            </div>
+            <h2 className="text-lg font-bold text-[var(--kl-ink)] pt-1">
+              Laporan Kebersihan PIC Shift {SHIFT_META[shift].label} Belum Dikirim
+            </h2>
+            <p className="text-sm text-[var(--kl-ink-muted)] max-w-lg mx-auto">
+              Status ini khusus laporan <strong>PIC shift</strong> (ringkasan serah terima satu shift).
+              Checklist kebersihan pribadi Anda tetap bisa diisi di bawah — tidak perlu menunggu PIC.
+            </p>
           </div>
-          <h2 className="text-lg font-bold text-[var(--kl-ink)] pt-1">
-            Laporan Kebersihan Shift {SHIFT_META[shift].label} Belum Tersedia
-          </h2>
-          <p className="text-sm text-[var(--kl-ink-muted)] max-w-md mx-auto">
-            PIC Shift {SHIFT_META[shift].label} untuk tanggal {formatDateIndo(date)} belum mengirimkan laporan kebersihan.
-          </p>
+          <MyCleanlinessChecklist date={date} shift={shift} />
         </div>
       ) : (
         <div className="space-y-5">
+          <MyCleanlinessChecklist date={date} shift={shift} />
           {/* Metadata Laporan */}
           <section className="rounded-2xl border border-[var(--kl-border)] bg-white p-5 flex flex-wrap items-center justify-between gap-4">
             <div className="space-y-1">
