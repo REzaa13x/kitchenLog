@@ -8,6 +8,7 @@ import { registerExtraRoutes } from '../server/routes-extra.js';
 import { registerFrontend } from '../server/frontend.js';
 import { registerPhotos, assertAttendancePhoto } from '../server/photos.js';
 import { registerOperations } from '../server/operations.js';
+import { encryptSecret, decryptSecret } from '../server/credential-vault.js';
 import { isShift, lateMinutes, summarizeAttendance } from '../server/attendance-rules.js';
 let roster=[{id:'S001',name:'Owner upstream',email:'admin@gmail.com',phone:'123',role:'admin',status:'active'},{id:'S981',name:'Fahreza',email:'fahreza@gmail.com',phone:null,role:'admin',status:'active'}];
 let outage=false;
@@ -22,7 +23,7 @@ for(const name of ['20261123-staff-accounts.sql','20261123-attendance-cleanlines
 const db=mysql.createPool({...options,database,dateStrings:true});
 let createGeasteats;try{({createGeasteats}=await import('../server/geasteats.js'));}catch(e){if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;}
 const source=(await fs.readFile(new URL('../server/index.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'').replace(/app\.listen\(PORT,[\s\S]*$/,'return {app,hashPassword};');
-const {app,hashPassword}=new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend','registerPhotos','registerOperations','assertAttendancePhoto','isShift','lateMinutes','summarizeAttendance',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend,registerPhotos,registerOperations,assertAttendancePhoto,isShift,lateMinutes,summarizeAttendance);
+const {app,hashPassword}=new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend','registerPhotos','registerOperations','assertAttendancePhoto','isShift','lateMinutes','summarizeAttendance','encryptSecret','decryptSecret','credentialsEnabled',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend,registerPhotos,registerOperations,assertAttendancePhoto,isShift,lateMinutes,summarizeAttendance,encryptSecret,decryptSecret,()=>true);
 const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
 async function request(path,body,token,method='POST'){const r=await fetch(`http://127.0.0.1:${server.address().port}/api`+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:await r.json()};}
 try{

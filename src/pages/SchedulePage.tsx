@@ -7,10 +7,10 @@ import { formatDateIndo, SHIFT_META } from '../utils/wibTime';
 export const SchedulePage: React.FC = () => {
   const { state, nowWib, upsertSchedule } = useKitchen();
 
-  const staffUsers = [...state.users].sort((a, b) => {
-    if (a.role !== b.role) return a.role === 'staff' ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
+  // Admin hanya mengelola aplikasi; tidak pernah masuk jadwal shift maupun absensi.
+  const staffUsers = [...state.users]
+    .filter((u) => u.role !== 'supervisor')
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const [selectedDate, setSelectedDate] = useState(nowWib.date);
   const [selectedShift, setSelectedShift] = useState<ShiftType>('opening');
@@ -155,7 +155,6 @@ export const SchedulePage: React.FC = () => {
                     <div>
                       <p className="text-sm font-semibold text-[var(--kl-ink)]">
                         {staff.name}
-                        {staff.role === 'supervisor' ? ' (Admin)' : ''}
                       </p>
                       <p className="text-xs text-[var(--kl-ink-muted)]">{staff.jobTitle}</p>
                     </div>

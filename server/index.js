@@ -9,6 +9,7 @@ import { registerPhotos, assertAttendancePhoto } from './photos.js';
 import { registerOperations } from './operations.js';
 import { isShift, lateMinutes, summarizeAttendance } from './attendance-rules.js';
 import { SHIFT_TASKS, findTask } from './shift-tasks.js';
+import { encryptSecret, decryptSecret, credentialsEnabled } from './credential-vault.js';
 
 /**
  * KitchenLog — Backend API (MySQL)
@@ -889,7 +890,7 @@ app.patch('/api/items/:id/status', requireAuth, async (req, res) => {
 registerPhotos(app, { getPool, requireAuth, loadWorkspace });
 
 // 404 JSON untuk rute /api yang tidak dikenal
-registerExtraRoutes(app, { getPool, requireAuth, loadWorkspace, uid, wibNow, isEmail, hashPassword });
+registerExtraRoutes(app, { getPool, requireAuth, loadWorkspace, uid, wibNow, isEmail, hashPassword, encryptSecret, decryptSecret });
 registerOperations(app, { getPool, requireAuth, loadWorkspace, assertPhotoOwned: assertAttendancePhoto });
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.' }));

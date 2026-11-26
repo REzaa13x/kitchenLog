@@ -1,5 +1,15 @@
 // Credentials are global: never claim an existing account through its email.
-export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, hashPassword, isEmail }) {
+export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, hashPassword, isEmail, encryptSecret, decryptSecret }) {
+  // Kredensial awal disimpan terenkripsi agar Admin dapat menyalin ulang saat
+  // staf lupa. Password TIDAK pernah dikirim sebagai hash, hanya hasil dekripsi.
+  const storeSecret = async (connection, userId, plain) => {
+    if (!encryptSecret || typeof plain !== 'string' || !plain) return;
+    try {
+      await connection.query('UPDATE users SET credential_secret = ? WHERE id = ?', [encryptSecret(plain), userId]);
+    } catch {
+      // Kolom belum ada (migrasi belum jalan): jangan gagalkan pembuatan akun.
+    }
+  };
   const list = value => String(value || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
   const fail = (status, message) => Object.assign(new Error(message), { status });
   async function mutate(req, res, mode) {
@@ -50,6 +60,7 @@ export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, has
           email = b.email ? b.email.trim().toLowerCase() : `${id}@accounts.dapurops.invalid`;
           await c.query('INSERT INTO users (id, email, username, password_hash, name, role, job_title) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, email, username, hashPassword(b.password), name, role, job]);
           await c.query('INSERT INTO staff (id, workspace_id, name, email, role, job_title) VALUES (?, ?, ?, ?, ?, ?)', [id, workspaceId, name, email, role, job]);
+          await storeSecret(c, id, b.password);
         } else {
           // Email is the existing membership key. Changing it would transfer identity.
           if (b.email && b.email.trim().toLowerCase() !== email.toLowerCase()) throw fail(400, 'Email akun tidak dapat diganti di sini.');
@@ -60,11 +71,14 @@ export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, has
             if (others.length || otherStaff.length) throw fail(403, 'Akun bersama ruang kerja lain tidak dapat diatur ulang.');
             if (!user && !(hasUsername && hasPassword)) throw fail(400, 'Akun baru memerlukan username dan password.');
             if (!user) {
-              await c.query('INSERT INTO users (id, email, username, password_hash, name, role, job_title) VALUES (?, ?, ?, ?, ?, ?, ?)', [uid('u'), email, username, hashPassword(b.password), name, role, job]);
+              const newUserId = uid('u');
+              await c.query('INSERT INTO users (id, email, username, password_hash, name, role, job_title) VALUES (?, ?, ?, ?, ?, ?, ?)', [newUserId, email, username, hashPassword(b.password), name, role, job]);
+              await storeSecret(c, newUserId, b.password);
             } else {
               if (hasUsername) await c.query('UPDATE users SET username = ? WHERE id = ?', [username, user.id]);
               if (hasPassword) {
                 await c.query('UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?', [hashPassword(b.password), user.id]);
+                await storeSecret(c, user.id, b.password);
                 await c.query('DELETE FROM sessions WHERE user_id = ?', [user.id]);
               }
             }
@@ -88,7 +102,44 @@ export function registerStaffAccounts(router, { getPool, loadWorkspace, uid, has
       res.status(err.status || (err.code === 'ER_DUP_ENTRY' ? 409 : 500)).json({ error: err.status ? err.message : err.code === 'ER_DUP_ENTRY' ? 'Username atau email sudah digunakan.' : 'Gagal menyimpan anggota tim.' });
     } finally { c?.release(); }
   }
+  // Admin melihat kredensial anggota (username + password terdekripsi).
+  // Hanya untuk anggota di ruang kerja Admin sendiri; Admin tidak termasuk.
+  router.get('/staff/credentials', async (req, res) => {
+    const workspaceId = String(req.query.workspaceId || '');
+    try {
+      if (!workspaceId) return res.status(400).json({ error: 'workspaceId tidak valid.' });
+      const access = await loadWorkspace(req.user.id, req.user.email, workspaceId);
+      if (access.error) return res.status(access.status).json({ error: access.error });
+      if (!access.isSupervisor) return res.status(403).json({ error: 'Hanya Admin yang dapat melihat kredensial anggota.' });
+      if (!decryptSecret) return res.status(503).json({ error: 'Fitur kredensial belum aktif di server ini.' });
+
+      const [rows] = await getPool().query(
+        `SELECT s.id AS staff_id, s.name, s.email, s.job_title, u.username, u.credential_secret
+           FROM staff s
+           LEFT JOIN users u ON u.email = s.email
+          WHERE s.workspace_id = ?
+          ORDER BY s.name`,
+        [workspaceId]
+      );
+      const credentials = rows
+        .filter((row) => String(row.email).toLowerCase() !== 'admin@gmail.com')
+        .map((row) => ({
+          staffId: row.staff_id,
+          name: row.name,
+          email: row.email,
+          jobTitle: row.job_title,
+          username: row.username || null,
+          // null = tidak tersedia (akun lama/Geasteats/kunci berubah), bukan error.
+          password: row.credential_secret ? decryptSecret(row.credential_secret) : null,
+        }));
+      res.json({ credentials });
+    } catch {
+      res.status(500).json({ error: 'Gagal memuat kredensial anggota.' });
+    }
+  });
+
   router.post('/staff', (req, res) => mutate(req, res, 'create'));
   router.patch('/staff/:id', (req, res) => mutate(req, res, 'edit'));
   router.delete('/staff/:id', (req, res) => mutate(req, res, 'delete'));
+
 }

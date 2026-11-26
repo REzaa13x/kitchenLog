@@ -53,6 +53,10 @@ export const TeamManagementPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [savedCredentials, setSavedCredentials] = useState<{ username: string; password: string } | null>(null);
+  // Kredensial anggota yang dibuka Admin (dimuat sekali, lalu di-toggle tampil).
+  const [revealedPassword, setRevealedPassword] = useState<Record<string, string | null>>({});
+  const [credentialsLoading, setCredentialsLoading] = useState(false);
+  const [credentialsError, setCredentialsError] = useState('');
   const [jobTitle, setJobTitle] = useState('Koki');
   const [role, setRole] = useState<UserRole>('staff');
   const [formError, setFormError] = useState('');
@@ -89,6 +93,43 @@ export const TeamManagementPage: React.FC = () => {
     setJobTitle(member.jobTitle);
     setRole('staff');
     setFormError('');
+  };
+
+  // Muat kredensial semua anggota sekali, lalu toggle tampil per anggota.
+  const loadCredentials = async () => {
+    if (!activeWorkspaceId) return;
+    setCredentialsLoading(true);
+    setCredentialsError('');
+    try {
+      const res = await fetch(`/api/staff/credentials?workspaceId=${encodeURIComponent(activeWorkspaceId)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('kitchenlog_token_v1') ?? ''}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCredentialsError(data?.error || 'Gagal memuat kredensial anggota.');
+        return;
+      }
+      const map: Record<string, string | null> = {};
+      for (const row of data.credentials ?? []) map[row.staffId] = row.password ?? null;
+      setRevealedPassword(map);
+    } catch {
+      setCredentialsError('Koneksi terputus saat memuat kredensial.');
+    } finally {
+      setCredentialsLoading(false);
+    }
+  };
+
+  const togglePassword = async (staffId: string) => {
+    if (!(staffId in revealedPassword)) {
+      await loadCredentials();
+      return;
+    }
+    setRevealedPassword((prev) => {
+      const next = { ...prev };
+      if (next[staffId]) next[staffId] = null;
+      else next[staffId] = prev[staffId] ?? null;
+      return next;
+    });
   };
 
   const handleSaveKitchenName = async (e: React.FormEvent) => {
@@ -508,9 +549,14 @@ export const TeamManagementPage: React.FC = () => {
             <h3 className="font-semibold">Login staf berhasil disimpan</h3>
             <p>Username: <code>{savedCredentials.username}</code></p>
             <p>Password: <code className="break-all select-all">{savedCredentials.password}</code></p>
-            <p className="text-xs">Berikan secara pribadi. Password hanya ditampilkan pada sesi halaman ini; tidak disimpan sebagai teks di server.</p>
+            <p className="text-xs">Berikan secara pribadi. Kredensial juga dapat dibuka lagi kapan saja lewat tombol <strong>Lihat</strong> pada daftar anggota.</p>
             <button type="button" onClick={() => setSavedCredentials(null)} className="min-h-[44px] text-sm font-semibold text-[var(--kl-accent)]">Tutup informasi login</button>
           </div>}
+          {credentialsError && (
+            <p role="alert" className="text-xs font-medium text-[#B91C1C] bg-[#FEE2E2] rounded-lg p-2.5">
+              {credentialsError}
+            </p>
+          )}
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-base font-bold text-[var(--kl-ink)] flex items-center gap-2">
               <Users className="w-4 h-4 text-[var(--kl-accent)]" aria-hidden="true" />
@@ -559,6 +605,29 @@ export const TeamManagementPage: React.FC = () => {
                       />
                       <span className="truncate">{member.username ? `Username: ${member.username}` : member.email}</span>
                     </p>
+                    {member.role !== 'supervisor' && (
+                      <div className="text-xs text-[var(--kl-ink-muted)] flex flex-wrap items-center gap-2">
+                        <span>
+                          Password:{' '}
+                          {revealedPassword[member.staffId || member.id] ? (
+                            <code className="break-all select-all font-mono text-[var(--kl-ink)]">
+                              {revealedPassword[member.staffId || member.id]}
+                            </code>
+                          ) : credentialsLoading ? (
+                            <span>memuat…</span>
+                          ) : (
+                            <span className="italic">tersembunyi</span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void togglePassword(member.staffId || member.id)}
+                          className="min-h-[32px] px-2 rounded-md border border-[var(--kl-border-strong)] bg-white text-[11px] font-semibold text-[var(--kl-accent)]"
+                        >
+                          {revealedPassword[member.staffId || member.id] ? 'Sembunyikan' : 'Lihat'}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">

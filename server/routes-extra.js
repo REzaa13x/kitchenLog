@@ -97,9 +97,20 @@ export function registerExtraRoutes(app, ctx) {
       // Serialize creation too: a nonexistent assignment cannot yet be row-locked.
       await connection.query('SELECT id FROM workspaces WHERE id = ? FOR UPDATE', [workspaceId]);
       const identities = await workspaceIdentities(connection, workspaceId);
+      // Admin hanya mengelola aplikasi: tidak boleh masuk jadwal shift.
+      const [[adminRow]] = await connection.query('SELECT id FROM users WHERE email = ? LIMIT 1', [String(req.user.email || '').toLowerCase()]);
+      const adminIds = new Set([req.user.id, adminRow?.id].filter(Boolean));
+      const [supervisorRows] = await connection.query(
+        "SELECT id, email FROM users WHERE role = 'supervisor'"
+      );
+      for (const sup of supervisorRows) {
+        const member = identities.get(sup.id) || identities.get(sup.email);
+        if (member) adminIds.add(member.id);
+      }
       const ids = staffIds.map(id => identities.get(id)?.id);
       const pic = identities.get(picId)?.id;
       if (ids.some(id => !id) || new Set(ids).size !== ids.length || !pic || !ids.includes(pic)) fail(400, 'Staf dan PIC harus anggota dapur; PIC harus masuk jadwal.');
+      if (ids.some(id => adminIds.has(id)) || adminIds.has(pic)) fail(400, 'Akun Admin tidak dapat dijadwalkan pada shift. Admin hanya mengelola aplikasi.');
       const [[existing]] = await connection.query('SELECT * FROM assignments WHERE workspace_id = ? AND shift_date = ? AND shift = ? FOR UPDATE', [workspaceId, date, shift]);
       const id = existing?.id || uid('asg').slice(0, 128);
       if (existing) {

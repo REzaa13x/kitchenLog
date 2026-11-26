@@ -9,6 +9,7 @@ import { createGeasteats } from '../server/geasteats.js';
 import { registerFrontend } from '../server/frontend.js';
 import { registerPhotos, assertAttendancePhoto } from '../server/photos.js';
 import { registerOperations } from '../server/operations.js';
+import { encryptSecret, decryptSecret } from '../server/credential-vault.js';
 import { isShift, lateMinutes, summarizeAttendance } from '../server/attendance-rules.js';
 const database = `dapurops_auth_test_${crypto.randomBytes(6).toString('hex')}`;
 const admin = await mysql.createConnection({ host: '127.0.0.1', user: 'root', ...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u => [['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}) });
@@ -21,9 +22,10 @@ for (const sql of (await fs.readFile(new URL('../database/migrations/20261123-at
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-geasteats.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-photos.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261126-operations.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
+ try { await admin.query('ALTER TABLE users ADD COLUMN credential_secret TEXT DEFAULT NULL'); } catch {}
 const source = (await fs.readFile(new URL('../server/index.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace(/app\.listen\(PORT,[\s\S]*$/, 'return { app, loadWorkspace, hashPassword, validAttendanceEvidence };');
 const db = mysql.createPool({host:'127.0.0.1',user:'root',database,...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u=>[['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}),dateStrings:true});
-const { app, hashPassword, loadWorkspace, validAttendanceEvidence } = new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend','registerPhotos','registerOperations','assertAttendancePhoto','isShift','lateMinutes','summarizeAttendance',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend,registerPhotos,registerOperations,assertAttendancePhoto,isShift,lateMinutes,summarizeAttendance);
+const { app, hashPassword, loadWorkspace, validAttendanceEvidence } = new Function('express','mysql','crypto','registerExtraRoutes','createGeasteats','registerFrontend','registerPhotos','registerOperations','assertAttendancePhoto','isShift','lateMinutes','summarizeAttendance','encryptSecret','decryptSecret','credentialsEnabled',source)(express,{createPool:()=>db},crypto,registerExtraRoutes,createGeasteats,registerFrontend,registerPhotos,registerOperations,assertAttendancePhoto,isShift,lateMinutes,summarizeAttendance,encryptSecret,decryptSecret,()=>true);
 const server=app.listen(0,'127.0.0.1'); await new Promise(r=>server.once('listening',r));
 const base=`http://127.0.0.1:${server.address().port}/api`;
 async function request(path,body,method='POST',token) { const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:await r.json()}; }
