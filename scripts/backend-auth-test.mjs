@@ -22,7 +22,7 @@ for (const sql of (await fs.readFile(new URL('../database/migrations/20261123-at
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-geasteats.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-photos.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261126-operations.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
-for (const sql of (await fs.readFile(new URL('../database/migrations/20261129-attendance-kitchen-photo.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
+// Fresh schema already includes attendance kitchen columns; migration is for older databases.
  try { await admin.query('ALTER TABLE users ADD COLUMN credential_secret TEXT DEFAULT NULL'); } catch {}
 const source = (await fs.readFile(new URL('../server/index.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace(/app\.listen\(PORT,[\s\S]*$/, 'return { app, loadWorkspace, hashPassword, validAttendanceEvidence };');
 const db = mysql.createPool({host:'127.0.0.1',user:'root',database,...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u=>[['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}),dateStrings:true});
@@ -85,6 +85,38 @@ try {
  const areaKeys=['meja_persiapan','kompor_area_masak','wastafel','lantai','tempat_sampah','area_penyimpanan'];
  const photo='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=';
  const evidence={areas:areaKeys.map(key=>({key,status:'Sudah Beres',note:''})),kitchenPhotoDataUrl:photo};
+ const checklistBody = { workspaceId:'ws', date:today, shift:'opening', cleanliness:{...evidence,kitchenPhotoDataUrl:''} };
+ assert.equal((await request('/cleanliness/my-checklist',checklistBody,'POST',signed.body.token)).status,400,'personal checklist requires kitchen evidence');
+ const reportBody = {workspaceId:'ws',date:today,shift:'opening',picId:user.id,areas:evidence.areas};
+ assert.equal((await request('/cleanliness',reportBody,'POST',signed.body.token)).status,400,'PIC report requires kitchen evidence');
+ for (const kitchenPhotoId of ['missing-kitchen','foreign-kitchen',5,'']) {
+  assert.equal((await request('/cleanliness/my-checklist',{...checklistBody,cleanliness:{...checklistBody.cleanliness,kitchenPhotoId}},'POST',signed.body.token)).status,400);
+  assert.equal((await request('/cleanliness',{...reportBody,generalPhotoId:kitchenPhotoId},'POST',signed.body.token)).status,400);
+ }
+ const checklistEvidence = {...checklistBody.cleanliness,kitchenPhotoId:'kitchen-in'};
+ assert.equal((await request('/cleanliness/my-checklist',{...checklistBody,cleanliness:checklistEvidence},'POST',signed.body.token)).status,200);
+ const [[checklistRow]] = await admin.query('SELECT check_in_cleanliness FROM attendance WHERE staff_id=?',[user.id]);
+ assert.equal(JSON.parse(checklistRow.check_in_cleanliness).kitchenPhotoId,'kitchen-in','real database checklist photo roundtrip');
+ assert.equal((await request('/cleanliness',{...reportBody,generalPhotoId:'kitchen-in'},'POST',signed.body.token)).status,200);
+ const [[reportRow]] = await admin.query("SELECT general_photo_id FROM cleanliness_reports WHERE workspace_id='ws'");
+ assert.equal(reportRow.general_photo_id,'kitchen-in','real database PIC photo roundtrip');
+ const issueAreas = evidence.areas.map((a,i)=>i ? a : {...a,status:'Perlu Ditangani',note:'Bersihkan meja'});
+ for (const photoId of [null,'foreign-kitchen']) assert.equal((await request('/cleanliness',{...reportBody,generalPhotoId:'kitchen-in',areas:issueAreas.map((a,i)=>i?a:{...a,photoId})},'POST',signed.body.token)).status,400,'PIC issue photo ownership required');
+ assert.equal((await request('/cleanliness',{...reportBody,generalPhotoId:'kitchen-in',areas:issueAreas.map((a,i)=>i?a:{...a,photoId:'kitchen-in'})},'POST',signed.body.token)).status,200);
+ await admin.query("UPDATE attendance SET check_out_time='12:00' WHERE staff_id=?",[user.id]);
+ assert.equal((await request('/cleanliness/my-checklist',{...checklistBody,cleanliness:{...checklistEvidence,kitchenPhotoId:'kitchen-out'}},'POST',signed.body.token)).status,200);
+ const [[outChecklist]] = await admin.query('SELECT check_in_cleanliness,check_out_cleanliness FROM attendance WHERE staff_id=?',[user.id]);
+ assert.equal(JSON.parse(outChecklist.check_in_cleanliness).kitchenPhotoId,'kitchen-in');
+ assert.equal(JSON.parse(outChecklist.check_out_cleanliness).kitchenPhotoId,'kitchen-out');
+ assert.equal((await request('/cleanliness/my-checklist',{...checklistBody,cleanliness:checklistEvidence})).status,401);
+ await admin.query("UPDATE assignments SET staff_ids='' WHERE id='shift'");
+ assert.equal((await request('/cleanliness/my-checklist',{...checklistBody,cleanliness:checklistEvidence},'POST',signed.body.token)).status,403,'unassigned actor denied');
+ await admin.query("UPDATE assignments SET staff_ids=? WHERE id='shift'",[created.body.id]);
+ await admin.query("UPDATE attendance SET check_in_cleanliness=?,check_out_cleanliness=NULL WHERE staff_id=?",[JSON.stringify(checklistBody.cleanliness),user.id]);
+ const legacyChecklistState = await request('/state?workspaceId=ws',undefined,'GET',signed.body.token);
+ assert.equal(legacyChecklistState.status,200,'legacy checklist without photo remains readable');
+ assert.ok(legacyChecklistState.body.attendance.some(a=>a.checkInCleanliness?.kitchenPhotoDataUrl===''));
+ await admin.query('DELETE FROM attendance WHERE staff_id=?',[user.id]);
  const invalidEvidence=[{}, {...evidence,areas:[]}, {...evidence,areas:[...evidence.areas.slice(0,5),evidence.areas[0]]}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,key:'unknown'})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,status:'bad'})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,status:'Perlu Ditangani',note:' '})}, {...evidence,areas:evidence.areas.map((a,i)=>i? a:{...a,note:'x'.repeat(1001)})}, {...evidence,kitchenPhotoDataUrl:''}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,aGVsbG8='}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,!!!!'}, {...evidence,kitchenPhotoDataUrl:photo.replace('image/png','image/jpeg')}, {...evidence,kitchenPhotoDataUrl:photo.replace('image/png','image/svg+xml')}, {...evidence,kitchenPhotoDataUrl:'data:image/png;base64,'+Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),Buffer.alloc(2*1024*1024)]).toString('base64')}];
  for(const action of ['check-in','check-out']) {
   // Klien lama yang masih mengirim checklist tidak valid tetap ditolak (kompatibilitas).

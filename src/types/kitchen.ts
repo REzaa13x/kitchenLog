@@ -63,6 +63,7 @@ export type CleanlinessAreaKey =
 
 export type CleanlinessAreaStatus = 'Sudah Beres' | 'Perlu Ditangani';
 export interface AttendanceCleanliness {
+  kitchenPhotoId?: string | null;
   areas: { key: CleanlinessAreaKey; status: CleanlinessAreaStatus; note: string }[];
   kitchenPhotoDataUrl: string;
 }

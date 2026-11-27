@@ -24,7 +24,8 @@ assert.equal(isCheckoutOverdue({ shiftDate: '2026-11-25', shift: 'closing', chec
 assert.equal(isCheckoutOverdue({ shiftDate: '2026-11-25', shift: 'closing', checkInMinutes: 12 * 60, checkOutMinutes: 17 * 60, now: { date: '2026-11-25', minutes: 23 * 60 } }), false, 'sudah checkout');
 
 const database = `dapurops_ops_test_${crypto.randomBytes(6).toString('hex')}`;
-const conn = await mysql.createConnection({ host: '127.0.0.1', user: 'root' });
+const config = process.env.TEST_MYSQL_URL ? ((u) => ({ host: u.hostname, port: Number(u.port) || 3306, user: decodeURIComponent(u.username), password: decodeURIComponent(u.password) }))(new URL(process.env.TEST_MYSQL_URL)) : { host: '127.0.0.1', user: 'root' };
+const conn = await mysql.createConnection(config);
 await conn.query(`CREATE DATABASE \`${database}\``);
 await conn.query(`USE \`${database}\``);
 const schema = await fs.readFile(new URL('../database/dapurops-schema.sql', import.meta.url), 'utf8');
@@ -32,7 +33,7 @@ for (const sql of schema.replace(/CREATE DATABASE IF NOT EXISTS[\s\S]*?;/, '').r
 for (const file of ['20261123-staff-accounts.sql', '20261123-attendance-cleanliness.sql', '20261125-geasteats.sql', '20261125-photos.sql', '20261126-operations.sql']) {
   for (const sql of (await fs.readFile(new URL(`../database/migrations/${file}`, import.meta.url), 'utf8')).split(';')) if (sql.trim()) await conn.query(sql);
 }
-const db = mysql.createPool({ host: '127.0.0.1', user: 'root', database, dateStrings: true });
+const db = mysql.createPool({ ...config, database, dateStrings: true });
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 const requireAuth = async (req, res, next) => {

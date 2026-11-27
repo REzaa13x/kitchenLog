@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { PhotoCaptureField } from './PhotoCaptureField';
 import { CheckCircle2, ClipboardList, Loader2, Save } from 'lucide-react';
 import { useKitchen } from '../storage/kitchenContext';
 import type { AttendanceCleanliness, CleanlinessAreaKey, CleanlinessAreaStatus, ShiftType } from '../types/kitchen';
@@ -25,6 +26,7 @@ export const MyCleanlinessChecklist: React.FC<MyCleanlinessChecklistProps> = ({ 
   const { state, currentUser, submitMyCleanliness } = useKitchen();
   const [areas, setAreas] = useState<AreaState>(emptyAreas);
   const [saving, setSaving] = useState(false);
+  const [kitchenPhotoId, setKitchenPhotoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -44,6 +46,7 @@ export const MyCleanlinessChecklist: React.FC<MyCleanlinessChecklistProps> = ({ 
   // Isi form dari checklist yang sudah tersimpan (utamakan check-out bila ada).
   useEffect(() => {
     const source: AttendanceCleanliness | null = savedCheckOut ?? savedCheckIn;
+    setKitchenPhotoId(source?.kitchenPhotoId ?? null);
     if (!source?.areas?.length) {
       setAreas(emptyAreas());
       return;
@@ -54,7 +57,7 @@ export const MyCleanlinessChecklist: React.FC<MyCleanlinessChecklistProps> = ({ 
       next[area.key] = { status: area.status, note: area.note ?? '' };
     }
     setAreas(next);
-  }, [savedCheckIn, savedCheckOut]);
+  }, [record?.id, savedCheckIn ? JSON.stringify(savedCheckIn) : '', savedCheckOut ? JSON.stringify(savedCheckOut) : '', date, shift]);
 
   if (!currentUser) return null;
 
@@ -78,6 +81,7 @@ export const MyCleanlinessChecklist: React.FC<MyCleanlinessChecklistProps> = ({ 
       setError(missing.join(' '));
       return;
     }
+    if (!kitchenPhotoId) { setError('Foto dapur wajib diambil atau diunggah sebelum menyimpan checklist.'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -87,12 +91,14 @@ export const MyCleanlinessChecklist: React.FC<MyCleanlinessChecklistProps> = ({ 
           status: areas[a.key].status as CleanlinessAreaStatus,
           note: areas[a.key].note.trim(),
         })),
-        // Foto dapur terpisah; checklist ini cukup status + catatan.
+        kitchenPhotoId,
         kitchenPhotoDataUrl: '',
       };
       const res = await submitMyCleanliness({ date, shift, cleanliness: payload });
       if (!res.ok) setError(res.message);
       else setSavedAt(new Date().toISOString());
+    } catch {
+      setError('Gagal menyimpan checklist. Isian dan foto tetap tersedia; coba lagi.');
     } finally {
       setSaving(false);
     }
@@ -183,6 +189,7 @@ export const MyCleanlinessChecklist: React.FC<MyCleanlinessChecklistProps> = ({ 
         })}
       </div>
 
+      <PhotoCaptureField label="Foto dapur (wajib)" helperText="Lampirkan kondisi dapur untuk checklist ini." required photoId={kitchenPhotoId} onChange={setKitchenPhotoId} />
       {issueCount > 0 && (
         <p className="text-xs text-[#92400E]">
           {issueCount} area Perlu Ditangani akan otomatis menjadi tugas tindak lanjut untuk Admin/PJ.

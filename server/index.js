@@ -755,7 +755,9 @@ app.post('/api/cleanliness/my-checklist', requireAuth, async (req, res) => {
       'SELECT * FROM attendance WHERE workspace_id = ? AND assignment_id = ? AND staff_id IN (?) FOR UPDATE',
       [workspaceId, assignment.id, ids]
     );
-    const payload = JSON.stringify(cleanliness);
+    try { await assertAttendancePhoto(connection, workspaceId, req.user.id, cleanliness.kitchenPhotoId); }
+    catch (err) { if (err.status !== 400) throw err; await connection.rollback(); return res.status(400).json({ error: 'Foto dapur wajib diunggah dan harus milik Anda.' }); }
+    const payload = JSON.stringify({ areas: cleanliness.areas, kitchenPhotoId: cleanliness.kitchenPhotoId, kitchenPhotoDataUrl: '' });
     let attendanceId;
     if (existing.length) {
       const row = existing[0];
@@ -805,6 +807,12 @@ app.post('/api/cleanliness', requireAuth, async (req, res) => {
     const [members] = await getPool().query('SELECT id FROM staff WHERE workspace_id = ? AND email = ?', [workspaceId, req.user.email]);
     if (!assigned.some(a => [req.user.id, ...members.map(s => s.id)].includes(a.pic_id))) return res.status(403).json({ error: 'Anda bukan PIC shift ini.' });
     if (!Array.isArray(b.areas) || b.areas.length !== 6 || new Set(b.areas.map(a => a.key)).size !== 6 || b.areas.some(a => !cleanlinessAreaKeys.includes(a.key) || !['Sudah Beres', 'Perlu Ditangani'].includes(a.status) || typeof a.note !== 'string' || a.note.length > 1000 || (a.status === 'Perlu Ditangani' && !a.note.trim()))) return res.status(400).json({ error: 'Checklist enam area wajib lengkap.' });
+    try {
+      await assertAttendancePhoto(getPool(), workspaceId, req.user.id, b.generalPhotoId);
+      for (const area of b.areas) {
+        if (area.status === 'Perlu Ditangani' || area.photoId != null) await assertAttendancePhoto(getPool(), workspaceId, req.user.id, area.photoId);
+      }
+    } catch (err) { if (err.status !== 400) throw err; return res.status(400).json({ error: 'Foto dapur dan foto area bermasalah wajib diunggah dan harus milik Anda.' }); }
     const id = uid('clean');
     await getPool().query(
       `INSERT INTO cleanliness_reports

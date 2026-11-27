@@ -27,6 +27,28 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pending, setPending] = useState<{ blob: Blob; source: 'camera' | 'upload'; id: string } | null>(null);
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  const upload = async (item: NonNullable<typeof pending>) => {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(item);
+    onChange(null);
+    setSaving(true);
+    setCameraError(null);
+    try {
+      const id = await savePhotoToIndexedDB(item.blob, item.source, item.id);
+      if (!mounted.current) return;
+      onChange(id);
+      setPending(null);
+    } catch {
+      if (mounted.current) setCameraError('Unggah foto gagal. Foto tetap tersedia; tekan Coba Lagi Unggah Foto.');
+    } finally {
+      busy.current = false;
+      if (mounted.current) setSaving(false);
+    }
+  };
 
   const stopCameraStream = () => {
     if (streamRef.current) {
@@ -37,7 +59,9 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
   };
 
   useEffect(() => {
+    mounted.current = true;
     return () => {
+      mounted.current = false;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
@@ -45,6 +69,7 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
   }, []);
 
   const handleOpenCamera = async () => {
+    stopCameraStream();
     setCameraError(null);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError(
@@ -58,6 +83,7 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
       });
+      if (!mounted.current) { stream.getTracks().forEach(t => t.stop()); return; }
       streamRef.current = stream;
       setCameraOpen(true);
       window.requestAnimationFrame(() => {
@@ -75,7 +101,7 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
 
   const handleCapturePhoto = async () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !video.videoWidth || saving) return;
     setSaving(true);
     try {
       const canvas = document.createElement('canvas');
@@ -89,8 +115,7 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
         canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.86)
       );
       if (blob) {
-        const newId = await savePhotoToIndexedDB(blob, 'camera');
-        onChange(newId);
+        await upload({ blob, source: 'camera', id: `photo-${crypto.randomUUID()}` });
       }
       stopCameraStream();
     } catch {
@@ -106,8 +131,7 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
     setCameraError(null);
     setSaving(true);
     try {
-      const newId = await savePhotoToIndexedDB(file, 'upload');
-      onChange(newId);
+      await upload({ blob: file, source: 'upload', id: `photo-${crypto.randomUUID()}` });
     } catch {
       setCameraError('Gagal menyimpan foto unggahan ke penyimpanan lokal.');
     } finally {
@@ -139,7 +163,7 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="relative aspect-[4/3] bg-black">
+          <div className="relative aspect-square bg-black">
             <video
               ref={videoRef}
               autoPlay
@@ -147,6 +171,7 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
               muted
               className="w-full h-full object-cover"
             />
+            <div data-camera-guide="grid" aria-hidden="true" className="absolute inset-6 grid grid-cols-3 grid-rows-3 border-2 border-white/80 pointer-events-none">{Array.from({ length: 9 }, (_, i) => <div key={i} className="border border-white/40" />)}</div>
           </div>
           <div className="p-3 flex items-center justify-between gap-3 bg-[var(--kl-ink)]">
             <button
@@ -169,6 +194,10 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
         </div>
       )}
 
+      {pending && !cameraOpen && <div className="space-y-2">
+        <PhotoViewer photoId={pending.id} alt={`${label} — menunggu unggahan`} className="max-w-sm" />
+        <button type="button" disabled={saving} onClick={() => void upload(pending)} className="min-h-[44px] px-4 rounded-lg border text-sm font-semibold">{saving ? 'Mengunggah…' : 'Coba Lagi Unggah Foto'}</button>
+      </div>}
       {photoId && !cameraOpen && (
         <div className="space-y-2">
           <PhotoViewer photoId={photoId} alt={label} className="max-w-sm" />
@@ -227,7 +256,8 @@ export const PhotoCaptureField: React.FC<PhotoCaptureFieldProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        aria-label={label}
+        accept="image/jpeg,image/png,image/webp"
         onChange={handleFileChange}
         className="hidden"
       />

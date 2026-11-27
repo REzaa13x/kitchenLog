@@ -160,7 +160,7 @@ export const CleanlinessForm: React.FC<CleanlinessFormProps> = ({
 
     setSubmitting(true);
     try {
-      await submitCleanlinessReport({
+      const result = await submitCleanlinessReport({
         date,
         shift,
         picId,
@@ -172,6 +172,9 @@ export const CleanlinessForm: React.FC<CleanlinessFormProps> = ({
         aiSummaryConfirmedAt: aiConfirmedAt,
         aiSummaryConfirmedBy: confirmedAiSummary ? picName : null,
       });
+      if (!result.ok) setErrors({ submit: result.message });
+    } catch {
+      setErrors({ submit: 'Gagal mengirim laporan. Isian dan foto tetap tersedia; coba lagi.' });
     } finally {
       setSubmitting(false);
     }
@@ -333,7 +336,7 @@ export const CleanlinessForm: React.FC<CleanlinessFormProps> = ({
 
         {Object.keys(errors).length > 0 && (
           <p className="text-xs font-medium text-[#B91C1C] bg-[#FEE2E2] border border-[#FECACA] rounded-lg px-3.5 py-2.5">
-            Masih ada kolom wajib yang belum dilengkapi. Periksa pesan merah di atas sebelum mengirim.
+            {errors.submit || 'Masih ada kolom wajib yang belum dilengkapi. Periksa pesan merah di atas sebelum mengirim.'}
           </p>
         )}
 
