@@ -156,7 +156,7 @@ service cloud.firestore {
           'id', 'ownerId', 'memberEmails', 'assignmentId', 'date', 'shift',
           'staffId', 'staffEmail', 'checkInTime', 'checkInMinutes', 'checkOutTime',
           'checkOutMinutes', 'lateMinutes', 'durationMinutes', 'checkInPhotoId',
-          'checkOutPhotoId', 'supervisorStatus', 'supervisorNote', 'updatedAt'
+          'checkOutPhotoId', 'checkInKitchenPhotoId', 'checkOutKitchenPhotoId', 'supervisorStatus', 'supervisorNote', 'updatedAt'
         ]) &&
         isValidId(data.id) &&
         isValidId(data.ownerId) &&
@@ -172,6 +172,8 @@ service cloud.firestore {
         (!data.keys().hasAny(['checkOutTime']) || data.checkOutTime == null || (data.checkOutTime is string && data.checkOutTime.size() <= 10)) &&
         (!data.keys().hasAny(['checkOutMinutes']) || data.checkOutMinutes == null || (data.checkOutMinutes is number && data.checkOutMinutes >= 0 && data.checkOutMinutes <= 1440)) &&
         (!data.keys().hasAny(['durationMinutes']) || data.durationMinutes == null || (data.durationMinutes is number && data.durationMinutes >= 0 && data.durationMinutes <= 1440)) &&
+        (!data.keys().hasAny(['checkInKitchenPhotoId']) || data.checkInKitchenPhotoId == null || isValidId(data.checkInKitchenPhotoId)) &&
+        (!data.keys().hasAny(['checkOutKitchenPhotoId']) || data.checkOutKitchenPhotoId == null || isValidId(data.checkOutKitchenPhotoId)) &&
         (!data.keys().hasAny(['checkInPhotoId']) || data.checkInPhotoId == null || isValidId(data.checkInPhotoId)) &&
         (!data.keys().hasAny(['checkOutPhotoId']) || data.checkOutPhotoId == null || isValidId(data.checkOutPhotoId)) &&
         (!data.keys().hasAny(['supervisorStatus']) || data.supervisorStatus == null || data.supervisorStatus in ['Izin', 'Sakit', 'Alpa']) &&
@@ -384,7 +386,7 @@ service cloud.firestore {
               (isWorkspaceSupervisor(workspaceId) || existing().staffEmail == authEmail()) &&
               existing().checkInTime != null &&
               incoming().diff(existing()).affectedKeys().hasOnly([
-                'checkOutTime', 'checkOutMinutes', 'durationMinutes', 'checkOutPhotoId', 'updatedAt'
+                'checkOutTime', 'checkOutMinutes', 'durationMinutes', 'checkOutPhotoId', 'checkOutKitchenPhotoId', 'updatedAt'
               ])
             ) ||
             (

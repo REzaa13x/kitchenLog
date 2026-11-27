@@ -101,8 +101,8 @@ export interface KitchenContextValue {
     }
   ) => Promise<ActionResult>;
   removeStaffMember: (staffId: string) => Promise<ActionResult>;
-  checkIn: (assignmentId: string, staffId: string, checkInPhotoId: string, cleanliness?: import('../types/kitchen').AttendanceCleanliness, clientRef?: string) => Promise<ActionResult>;
-  checkOut: (assignmentId: string, staffId: string, checkOutPhotoId: string, cleanliness?: import('../types/kitchen').AttendanceCleanliness, clientRef?: string) => Promise<ActionResult>;
+  checkIn: (assignmentId: string, staffId: string, checkInPhotoId: string, cleanliness?: import('../types/kitchen').AttendanceCleanliness, clientRef?: string, kitchenPhotoId?: string) => Promise<ActionResult>;
+  checkOut: (assignmentId: string, staffId: string, checkOutPhotoId: string, cleanliness?: import('../types/kitchen').AttendanceCleanliness, clientRef?: string, kitchenPhotoId?: string) => Promise<ActionResult>;
   /** Opsional: hanya mode MySQL yang punya koreksi absensi + audit. */
   correctAttendance?: (payload: {
     attendanceId?: string;

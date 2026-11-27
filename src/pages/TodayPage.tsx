@@ -1,3 +1,4 @@
+import { PhotoViewer } from '../components/PhotoViewer';
 import React, { useMemo, useState } from 'react';
 import {
   ArrowRight,
@@ -206,8 +207,10 @@ export const TodayPage: React.FC<TodayPageProps> = ({
                     </div>
                   </div>
 
-                  {(record?.checkInPhotoId || record?.checkOutPhotoId) && (
+                  {(record?.checkInPhotoId || record?.checkOutPhotoId || record?.checkInKitchenPhotoId || record?.checkOutKitchenPhotoId) && (
                     <div className="flex flex-wrap items-center gap-2">
+                      {record?.checkInKitchenPhotoId && <div className="w-32 whitespace-normal"><p className="text-xs font-semibold">Dapur · Masuk</p><PhotoViewer photoId={record.checkInKitchenPhotoId} alt="Kondisi dapur saat check-in" /></div>}
+                      {record?.checkOutKitchenPhotoId && <div className="w-32 whitespace-normal"><p className="text-xs font-semibold">Dapur · Pulang</p><PhotoViewer photoId={record.checkOutKitchenPhotoId} alt="Kondisi dapur saat check-out" /></div>}
                       {record?.checkInPhotoId && (
                         <FacePhotoAvatar
                           photoId={record.checkInPhotoId}
@@ -481,14 +484,14 @@ export const TodayPage: React.FC<TodayPageProps> = ({
         shift={faceModal?.shift ?? 'opening'}
         currentTimeHHMM={nowWib.timeHHMM}
         onClose={() => setFaceModal(null)}
-        onConfirm={async (photoId, clientRef) => {
+        onConfirm={async (photoId, clientRef, kitchenPhotoId) => {
           if (!faceModal) {
             return { ok: false, message: 'Sesi absensi tidak ditemukan.' };
           }
           const res =
             faceModal.mode === 'checkin'
-              ? await checkIn(faceModal.assignmentId, currentUser.id, photoId, undefined, clientRef)
-              : await checkOut(faceModal.assignmentId, currentUser.id, photoId, undefined, clientRef);
+              ? await checkIn(faceModal.assignmentId, currentUser.id, photoId, undefined, clientRef, kitchenPhotoId)
+              : await checkOut(faceModal.assignmentId, currentUser.id, photoId, undefined, clientRef, kitchenPhotoId);
           if (!res.ok) {
             setAttendanceFeedback((p) => ({
               ...p,

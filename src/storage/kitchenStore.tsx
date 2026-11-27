@@ -1011,7 +1011,10 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const checkIn = async (
     assignmentId: string,
     staffId: string,
-    checkInPhotoId: string
+    checkInPhotoId: string,
+    _cleanliness?: import('../types/kitchen').AttendanceCleanliness,
+    _clientRef?: string,
+    kitchenPhotoId?: string
   ): Promise<ActionResult> => {
     if (!firebaseUser || !workspaceMeta) {
       return { ok: false, message: 'Silakan masuk dengan Google terlebih dahulu.' };
@@ -1064,6 +1067,7 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
         checkOutMinutes: null,
         lateMinutes,
         durationMinutes: null,
+        checkInKitchenPhotoId: kitchenPhotoId ?? null,
         checkInPhotoId,
         checkOutPhotoId: null,
         supervisorStatus: null,
@@ -1085,7 +1089,10 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const checkOut = async (
     assignmentId: string,
     staffId: string,
-    checkOutPhotoId: string
+    checkOutPhotoId: string,
+    _cleanliness?: import('../types/kitchen').AttendanceCleanliness,
+    _clientRef?: string,
+    kitchenPhotoId?: string
   ): Promise<ActionResult> => {
     if (!firebaseUser || !workspaceMeta) {
       return { ok: false, message: 'Silakan masuk dengan Google terlebih dahulu.' };
@@ -1121,6 +1128,7 @@ export const KitchenProvider: React.FC<{ children: React.ReactNode }> = ({ child
         checkOutTime: effectiveNow.timeHHMM,
         checkOutMinutes: effectiveNow.minutes,
         durationMinutes,
+        checkOutKitchenPhotoId: kitchenPhotoId ?? null,
         checkOutPhotoId,
         updatedAt: `${effectiveNow.date} ${effectiveNow.timeHHMM}`,
       });

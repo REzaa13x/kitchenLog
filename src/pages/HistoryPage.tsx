@@ -1,3 +1,4 @@
+import { PhotoViewer } from '../components/PhotoViewer';
 import React, { useMemo, useState } from 'react';
 import { ClipboardCheck, History, PackageOpen } from 'lucide-react';
 import { FacePhotoAvatar } from '../components/FacePhotoAvatar';
@@ -189,9 +190,11 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
                                 {formatDurationIndo(rec?.durationMinutes)}
                               </td>
                               <td className="py-2.5 px-3.5 whitespace-nowrap">
-                                {rec?.checkInPhotoId || rec?.checkOutPhotoId ? (
+                                {rec?.checkInPhotoId || rec?.checkOutPhotoId || rec?.checkInKitchenPhotoId || rec?.checkOutKitchenPhotoId ? (
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    {rec?.checkInPhotoId && (
+                                    {rec?.checkInKitchenPhotoId && <div className="w-32 whitespace-normal"><p className="text-xs font-semibold">Dapur · Masuk</p><PhotoViewer photoId={rec.checkInKitchenPhotoId} alt="Kondisi dapur saat check-in" /></div>}
+                      {rec?.checkOutKitchenPhotoId && <div className="w-32 whitespace-normal"><p className="text-xs font-semibold">Dapur · Pulang</p><PhotoViewer photoId={rec.checkOutKitchenPhotoId} alt="Kondisi dapur saat check-out" /></div>}
+                      {rec?.checkInPhotoId && (
                                       <FacePhotoAvatar
                                         photoId={rec.checkInPhotoId}
                                         label="Masuk"

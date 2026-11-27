@@ -419,7 +419,8 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     staffId: string,
     checkInPhotoId: string,
     cleanliness?: import('../types/kitchen').AttendanceCleanliness,
-    clientRef?: string
+    clientRef?: string,
+    kitchenPhotoId?: string
   ): Promise<ActionResult> => {
     const ctx = requireReady();
     if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
@@ -427,7 +428,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
       async () => {
         await call('/attendance/check-in', {
           method: 'POST',
-          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkInPhotoId || null, ...(cleanliness ? { cleanliness } : {}), ...(clientRef ? { clientRef } : {}) },
+          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkInPhotoId || null, ...(cleanliness ? { cleanliness } : {}), ...(clientRef ? { clientRef } : {}), ...(kitchenPhotoId ? { kitchenPhotoId } : {}) },
         });
       },
       'Absen masuk tercatat.'
@@ -439,7 +440,8 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
     staffId: string,
     checkOutPhotoId: string,
     cleanliness?: import('../types/kitchen').AttendanceCleanliness,
-    clientRef?: string
+    clientRef?: string,
+    kitchenPhotoId?: string
   ): Promise<ActionResult> => {
     const ctx = requireReady();
     if (!ctx) return { ok: false, message: 'Silakan masuk terlebih dahulu.' };
@@ -447,7 +449,7 @@ export const MysqlKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ 
       async () => {
         await call('/attendance/check-out', {
           method: 'POST',
-          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkOutPhotoId || null, ...(cleanliness ? { cleanliness } : {}), ...(clientRef ? { clientRef } : {}) },
+          body: { workspaceId: ctx.wsId, assignmentId, staffId, photoId: checkOutPhotoId || null, ...(cleanliness ? { cleanliness } : {}), ...(clientRef ? { clientRef } : {}), ...(kitchenPhotoId ? { kitchenPhotoId } : {}) },
         });
       },
       'Absen keluar tercatat.'

@@ -41,6 +41,8 @@ export interface AttendanceRecord {
   checkOutMinutes: number | null;
   lateMinutes: number; // 0 if on time
   durationMinutes: number | null;
+  checkInKitchenPhotoId?: string | null;
+  checkOutKitchenPhotoId?: string | null;
   checkInPhotoId?: string | null;
   checkOutPhotoId?: string | null;
   earlyLeaveMinutes?: number | null;

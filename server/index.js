@@ -387,6 +387,8 @@ app.get('/api/state', requireAuth, async (req, res) => {
         checkOutMinutes: a.check_out_minutes,
         lateMinutes: a.late_minutes,
         durationMinutes: a.duration_minutes,
+        checkInKitchenPhotoId: a.check_in_kitchen_photo_id ?? null,
+        checkOutKitchenPhotoId: a.check_out_kitchen_photo_id ?? null,
         checkInPhotoId: a.check_in_photo_id,
         checkOutPhotoId: a.check_out_photo_id,
         checkInCleanliness: safeJson(a.check_in_cleanliness, null),
@@ -519,7 +521,7 @@ const CLIENT_REF_RE = /^[A-Za-z0-9_-]{8,128}$/;
 function attendanceHandler(action) {
   const isCheckIn = action === 'check-in';
   return async (req, res) => {
-    const { workspaceId, assignmentId, staffId, photoId } = req.body ?? {};
+    const { workspaceId, assignmentId, staffId, photoId, kitchenPhotoId = null } = req.body ?? {};
     if (staffId !== req.user.id) return res.status(403).json({ error: 'Anda hanya dapat mencatat absensi akun sendiri.' });
     // Bukti absensi = foto wajah. Checklist kebersihan diisi terpisah di halaman
     // Laporan Kebersihan; bila klien lama masih mengirimnya, tetap divalidasi.
@@ -551,7 +553,8 @@ function attendanceHandler(action) {
 
       await assertAttendancePhoto(getPool(), workspaceId, req.user.id, photoId);
 
-      const evidence = isCheckIn ? { photo: 'check_in_photo_id', clean: 'check_in_cleanliness' } : { photo: 'check_out_photo_id', clean: 'check_out_cleanliness' };
+      if (kitchenPhotoId !== null) await assertAttendancePhoto(getPool(), workspaceId, req.user.id, kitchenPhotoId);
+      const refColumn = isCheckIn ? 'client_ref' : 'check_out_client_ref';
       connection = await getPool().getConnection();
       await connection.beginTransaction();
       await connection.query('SELECT id FROM assignments WHERE id = ? AND workspace_id = ? FOR UPDATE', [assignmentId, workspaceId]);
@@ -561,9 +564,9 @@ function attendanceHandler(action) {
       );
 
       // Retry idempoten: permintaan yang sama tidak boleh menggandakan catatan.
-      if (clientRef && existing.some((a) => a.client_ref === clientRef)) {
+      if (clientRef && existing.some((a) => a[refColumn] === clientRef)) {
         await connection.rollback();
-        const done = existing.find((a) => a.client_ref === clientRef);
+        const done = existing.find((a) => a[refColumn] === clientRef);
         return res.json({ ok: true, duplicate: true, checkInTime: done.check_in_time, checkOutTime: done.check_out_time });
       }
 
@@ -580,17 +583,17 @@ function attendanceHandler(action) {
         const late = lateMinutes(asg.shift, minutes, dayOffset);
         if (existing.length) {
           await connection.query(
-            `UPDATE attendance SET check_in_time = ?, check_in_minutes = ?, late_minutes = ?, check_in_photo_id = ?, check_in_cleanliness = ?, client_ref = ?
+            `UPDATE attendance SET check_in_time = ?, check_in_minutes = ?, late_minutes = ?, check_in_photo_id = ?, check_in_cleanliness = COALESCE(?, check_in_cleanliness), check_in_kitchen_photo_id = ?, client_ref = ?
               WHERE id = ?`,
-            [now.time, minutes, late, photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), clientRef, existing[0].id]
+            [now.time, minutes, late, photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), kitchenPhotoId, clientRef, existing[0].id]
           );
         } else {
           await connection.query(
             `INSERT INTO attendance (id, workspace_id, assignment_id, att_date, shift, staff_id, staff_email,
-              check_in_time, check_in_minutes, late_minutes, check_in_photo_id, check_in_cleanliness, client_ref)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              check_in_time, check_in_minutes, late_minutes, check_in_photo_id, check_in_cleanliness, check_in_kitchen_photo_id, client_ref)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [uid('att'), workspaceId, assignmentId, asg.shiftDate, asg.shift, staffId, req.user.email,
-              now.time, minutes, late, photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), clientRef]
+              now.time, minutes, late, photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), kitchenPhotoId, clientRef]
           );
         }
         await connection.commit();
@@ -609,10 +612,10 @@ function attendanceHandler(action) {
       const summary = summarizeAttendance({ shift: asg.shift, checkInMinutes: open.check_in_minutes, checkOutMinutes: minutes });
       await connection.query(
         `UPDATE attendance SET check_out_time = ?, check_out_minutes = ?, duration_minutes = ?,
-           early_leave_minutes = ?, overnight = ?, check_out_photo_id = ?, check_out_cleanliness = ?, client_ref = COALESCE(client_ref, ?)
+           early_leave_minutes = ?, overnight = ?, check_out_photo_id = ?, check_out_cleanliness = COALESCE(?, check_out_cleanliness), check_out_kitchen_photo_id = ?, check_out_client_ref = ?
          WHERE id = ?`,
         [now.time, minutes, summary.durationMinutes, summary.earlyLeaveMinutes, summary.overnight ? 1 : 0,
-          photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), clientRef, open.id]
+          photoId, (hasCleanliness ? JSON.stringify(req.body.cleanliness) : null), kitchenPhotoId, clientRef, open.id]
       );
       await connection.commit();
       return res.json({

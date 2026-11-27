@@ -22,6 +22,7 @@ for (const sql of (await fs.readFile(new URL('../database/migrations/20261123-at
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-geasteats.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261125-photos.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
 for (const sql of (await fs.readFile(new URL('../database/migrations/20261126-operations.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
+for (const sql of (await fs.readFile(new URL('../database/migrations/20261129-attendance-kitchen-photo.sql', import.meta.url),'utf8')).split(';')) if(sql.trim()) await admin.query(sql);
  try { await admin.query('ALTER TABLE users ADD COLUMN credential_secret TEXT DEFAULT NULL'); } catch {}
 const source = (await fs.readFile(new URL('../server/index.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace(/app\.listen\(PORT,[\s\S]*$/, 'return { app, loadWorkspace, hashPassword, validAttendanceEvidence };');
 const db = mysql.createPool({host:'127.0.0.1',user:'root',database,...(process.env.TEST_MYSQL_URL ? Object.fromEntries((u=>[['host',u.hostname],['port',Number(u.port)||3306],['user',decodeURIComponent(u.username)],['password',decodeURIComponent(u.password)]])(new URL(process.env.TEST_MYSQL_URL))) : {}),dateStrings:true});
@@ -64,12 +65,21 @@ try {
  const seedPhoto = async (id, ownerId = user.id) => admin.query("INSERT INTO private_photos (workspace_id,id,user_id,source,mime_type,data) VALUES ('ws',?,?,'camera','image/png',?)", [id, ownerId, PNG]);
  await seedPhoto('face-photo');
  await seedPhoto('face-out');
+ await seedPhoto('kitchen-in');
+ await seedPhoto('kitchen-out');
+ await seedPhoto('foreign-kitchen','old-owner');
  await seedPhoto('x'.repeat(200));
  await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('shift','ws',?,'opening',?,?)",[today,created.body.id,created.body.id]);
  assert.equal((await request('/cleanliness',{workspaceId:'ws',date:today,shift:'opening',picId:'other',picName:'Forged',areas:[]},'POST',signed.body.token)).status,403,'cannot impersonate PIC');
  assert.equal((await request('/items/missing/status',{workspaceId:'ws',status:'Selesai',resolutionNote:'fake'},'PATCH',signed.body.token)).status,403,'staff cannot resolve arbitrary item');
  const attendanceBody={workspaceId:'ws',assignmentId:'shift',staffId:user.id,photoId:'face-photo'};
- // Alur baru: bukti absensi cukup foto wajah; checklist diisi di halaman Kebersihan.
+ // Lampiran dapur tidak boleh melewati validasi kepemilikan.
+ for (const action of ['check-in','check-out']) {
+  for (const kitchenPhotoId of ['', 4, 'missing-kitchen', 'foreign-kitchen', 'x'.repeat(201)]) {
+   assert.equal((await request(`/attendance/${action}`,{...attendanceBody,kitchenPhotoId},'POST',signed.body.token)).status,400,'invalid kitchen attachment rejected');
+  }
+ }
+
  assert.equal((await request('/attendance/check-in',{...attendanceBody,photoId:'belum-diunggah'},'POST',signed.body.token)).status,400,'check-in requires a stored face photo');
  assert.equal((await request('/attendance/check-in',{workspaceId:'ws',assignmentId:'shift',staffId:user.id},'POST',signed.body.token)).status,400,'check-in requires face photo id');
  const areaKeys=['meja_persiapan','kompor_area_masak','wastafel','lantai','tempat_sampah','area_penyimpanan'];
@@ -83,11 +93,17 @@ try {
  }
  assert.equal((await request('/attendance/check-out',{...attendanceBody,cleanliness:evidence},'POST',signed.body.token)).status,409,'checkout requires prior checkin');
  for(const action of ['check-in','check-out']) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,staffId:'u_supervisor_75d4f29fee493805',cleanliness:evidence},'POST',token)).status,403,'unassigned admin cannot record attendance');
- assert.equal((await request('/attendance/check-in',{...attendanceBody,cleanliness:evidence},'POST',signed.body.token)).status,200,'assigned legacy staff ID accepts canonical user ID');
+ assert.equal((await request('/attendance/check-in',{...attendanceBody,cleanliness:evidence,kitchenPhotoId:'kitchen-in',clientRef:'kitchen-checkin-001'},'POST',signed.body.token)).status,200,'assigned legacy staff ID accepts canonical user ID');
  const outEvidence={...evidence,areas:evidence.areas.map((a,i)=>i?a:{...a,status:'Perlu Ditangani',note:'Kompor perlu dibersihkan'})};
- assert.equal((await request('/attendance/check-out',{...attendanceBody,photoId:'face-out',cleanliness:outEvidence},'POST',signed.body.token)).status,200,'checkout requires its own evidence');
+ assert.equal((await request('/attendance/check-out',{...attendanceBody,photoId:'face-out',cleanliness:outEvidence,kitchenPhotoId:'kitchen-out',clientRef:'kitchen-checkout-001'},'POST',signed.body.token)).status,200,'checkout requires its own evidence');
  for(const action of ['check-in','check-out']) assert.equal((await request(`/attendance/${action}`,{...attendanceBody,cleanliness:evidence},'POST',signed.body.token)).status,409,'completed action cannot be overwritten');
+ assert.equal((await request('/attendance/check-out',{...attendanceBody,kitchenPhotoId:'kitchen-out',clientRef:'kitchen-checkout-001'},'POST',signed.body.token)).body.duplicate,true,'checkout retry after checkin with another ref');
  const attendanceState=(await request('/state?workspaceId=ws',undefined,'GET',signed.body.token)).body.attendance[0];
+ assert.equal(attendanceState.checkInKitchenPhotoId,'kitchen-in');
+ assert.equal(attendanceState.checkOutKitchenPhotoId,'kitchen-out');
+ const adminEvidence=(await request('/state?workspaceId=ws',undefined,'GET',token)).body.attendance[0];
+ assert.equal(adminEvidence.checkOutKitchenPhotoId,'kitchen-out');
+ assert.equal((await request('/photos/kitchen-out?workspaceId=ws',undefined,'GET',token)).status,200);
  assert.deepEqual(attendanceState.checkInCleanliness,evidence,'state persists kitchen photo and checkin checklist');
  assert.deepEqual(attendanceState.checkOutCleanliness,outEvidence,'checkout evidence stored separately');
  const [[stored]]=await admin.query('SELECT check_in_cleanliness,check_out_cleanliness FROM attendance WHERE staff_id=?',[user.id]);
@@ -98,6 +114,7 @@ try {
  const legacyState=(await request('/state?workspaceId=ws',undefined,'GET',signed.body.token)).body.attendance.find(a=>a.id==='legacy-att');
  assert.equal(legacyState.staffId,user.id,'legacy attendance maps staff ID to user');
  assert.equal(legacyState.checkInCleanliness,null,'pre-migration evidence stays null');
+ assert.equal(legacyState.checkInKitchenPhotoId,null,'legacy photo stays null');
  // Absensi yang tercatat pada shift kemarin tetap boleh ditutup (lupa checkout / lewat tengah malam).
  assert.equal((await request('/attendance/check-in',{...attendanceBody,assignmentId:'past',photoId:'face-out',cleanliness:evidence},'POST',signed.body.token)).status,409,'opening shift from two days ago cannot be started');
  assert.equal((await request('/attendance/check-in',{...attendanceBody,assignmentId:'future',photoId:'face-out',cleanliness:evidence},'POST',signed.body.token)).status,409,'future shift cannot be started early');
@@ -128,8 +145,12 @@ try {
  // (Hapus dulu jadwal hari ini untuk closing, lalu buat jadwal paralel yang sah.)
  await admin.query("DELETE FROM assignments WHERE workspace_id='ws' AND shift_date=? AND shift='closing'", [today]);
  await admin.query("INSERT INTO assignments (id,workspace_id,shift_date,shift,staff_ids,pic_id) VALUES ('race3','ws',?,'closing',?,?)",[today,user.id,user.id]);
- const raceCheckIn=await request('/attendance/check-in',{...attendanceBody,assignmentId:'race3',photoId:'face-out',cleanliness:evidence},'POST',signed.body.token);
- assert.equal(raceCheckIn.status,200,'parallel checkout fixture check-in recorded');
+ await admin.query("INSERT INTO attendance (id,workspace_id,assignment_id,att_date,shift,staff_id,staff_email,check_in_cleanliness) VALUES ('precheck','ws','race3',?,'closing',?,?,?)",[today,user.id,user.email,JSON.stringify(evidence)]);
+ const raceCheckIn=await request('/attendance/check-in',{...attendanceBody,assignmentId:'race3',photoId:'face-out'},'POST',signed.body.token);
+ assert.equal(raceCheckIn.status,200,'face only accepted');
+ const [[preserved]]=await admin.query("SELECT check_in_cleanliness,check_in_kitchen_photo_id FROM attendance WHERE id='precheck'");
+ assert.deepEqual(JSON.parse(preserved.check_in_cleanliness), evidence, 'check-in does not erase prior separate checklist');
+ assert.equal(preserved.check_in_kitchen_photo_id,null);
  const racedOut=await Promise.all([1,2].map(()=>request('/attendance/check-out',{...attendanceBody,assignmentId:'race3',photoId:'face-out',cleanliness:webpEvidence},'POST',signed.body.token)));
  assert.deepEqual(racedOut.map(r=>r.status).sort(),[200,409],'concurrent checkout accepts WEBP, prevents overwrite');
  assert.match(user.password_hash,/^scrypt\$/); assert.notEqual(user.password_hash,account.password);

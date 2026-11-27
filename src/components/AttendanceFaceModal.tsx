@@ -12,11 +12,11 @@ interface AttendanceFaceModalProps {
   shift: ShiftType;
   currentTimeHHMM: string;
   onClose: () => void;
-  /** Bukti absensi cukup foto wajah; checklist kebersihan diisi di halaman Kebersihan. */
-  onConfirm: (photoId: string, clientRef: string) => Promise<{ ok: boolean; message: string; retryable?: boolean }>;
+  /** Wajah wajib, lampiran dapur opsional; checklist tetap terpisah. */
+  onConfirm: (photoId: string, clientRef: string, kitchenPhotoId?: string) => Promise<{ ok: boolean; message: string; retryable?: boolean }>;
 }
 
-type PhotoTarget = 'face';
+type PhotoTarget = 'face' | 'kitchen';
 
 // Foto wajah disimpan seukuran bukti absensi (bukan foto dapur resolusi penuh).
 async function compressPhoto(source: CanvasImageSource, width: number, height: number) {
@@ -52,6 +52,9 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
   // Foto wajah yang bytes-nya sudah ada tetapi unggahannya belum berhasil.
   const pendingFaceRef = useRef<{ id: string; blob: Blob; source: 'camera' | 'upload' } | null>(null);
 
+  const pendingKitchenRef = useRef<typeof pendingFaceRef.current>(null);
+  const [kitchenPhotoId, setKitchenPhotoId] = useState<string | null>(null);
+  const [cameraTarget, setCameraTarget] = useState<PhotoTarget>('face');
   const [photoId, setPhotoId] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
@@ -63,6 +66,8 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
   const busy = submitting || photoLoading;
 
   const stopCamera = () => {
+    cameraRequestRef.current += 1;
+    setCameraLoading(false);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -83,6 +88,9 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
     setPhotoLoading(false);
     setCameraLoading(false);
     setPhotoId(null);
+    setKitchenPhotoId(null);
+    pendingKitchenRef.current = null;
+    setCameraTarget('face');
     setSubmitError(null);
     setSubmitFailed(false);
     setCameraError(null);
@@ -97,8 +105,9 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode]);
 
-  const openCamera = async () => {
+  const openCamera = async (target: PhotoTarget = 'face') => {
     if (busyRef.current) return;
+    setCameraTarget(target);
     setCameraError(null);
     // Tutup stream lama lebih dulu: beberapa perangkat hanya mengizinkan satu
     // kamera aktif, dan stream yang tertinggal membuat percobaan berikut gagal.
@@ -118,7 +127,7 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
       let stream: MediaStream;
       try {
         // Bukti wajah: kamera depan.
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'user' } }, audio: false });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: target === 'face' ? 'user' : 'environment' } }, audio: false });
       } catch (error) {
         if (!(error instanceof DOMException) || !['NotFoundError', 'OverconstrainedError'].includes(error.name)) throw error;
         if (session !== sessionRef.current || request !== cameraRequestRef.current) return;
@@ -146,9 +155,11 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
       video.srcObject = streamRef.current;
       video.play().catch(() => {});
     }
-  }, [cameraOpen]);
+  }, [cameraOpen, cameraTarget]);
 
-  const captureOrUpload = async (file?: File) => {
+  const captureOrUpload = async (file?: File, target: PhotoTarget = cameraTarget) => {
+    const pendingRef = target === 'face' ? pendingFaceRef : pendingKitchenRef;
+    const setId = target === 'face' ? setPhotoId : setKitchenPhotoId;
     if (busyRef.current) return;
     const session = sessionRef.current;
     busyRef.current = true;
@@ -180,15 +191,15 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
       if (session !== sessionRef.current) return;
       // Simpan bytes + ID lebih dulu: walau unggah gagal, foto tidak perlu diambil ulang.
       const pendingId = `photo-${crypto.randomUUID()}`;
-      pendingFaceRef.current = { id: pendingId, blob: photo.blob, source: file ? 'upload' : 'camera' };
+      pendingRef.current = { id: pendingId, blob: photo.blob, source: file ? 'upload' : 'camera' };
       try {
         const savedId = await savePhotoToIndexedDB(photo.blob, file ? 'upload' : 'camera', pendingId);
         if (session !== sessionRef.current) return;
-        setPhotoId(savedId);
-        pendingFaceRef.current = null;
+        setId(savedId);
+        pendingRef.current = null;
       } catch (uploadError) {
         if (session !== sessionRef.current) return;
-        setPhotoId(pendingId);
+        setId(pendingId);
         setSubmitFailed(true);
         const message = uploadError instanceof Error ? uploadError.message : 'Foto gagal diunggah.';
         setSubmitError(`${message} Foto tetap tersimpan — tekan tombol coba lagi untuk mengunggah ulang.`);
@@ -221,13 +232,13 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
     stopCamera();
     try {
       // Unggah ulang foto wajah bila percobaan sebelumnya gagal (bytes tetap ada).
-      if (pendingFaceRef.current) {
-        const pending = pendingFaceRef.current;
+      for (const pendingRef of [pendingFaceRef, pendingKitchenRef]) {
+        if (!pendingRef.current) continue;
+        const pending = pendingRef.current;
         try {
           await savePhotoToIndexedDB(pending.blob, pending.source, pending.id);
-          pendingFaceRef.current = null;
           if (session !== sessionRef.current) return;
-          setPhotoId(pending.id);
+          pendingRef.current = null;
         } catch (uploadError) {
           if (session === sessionRef.current) {
             setSubmitFailed(true);
@@ -240,7 +251,7 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
           return;
         }
       }
-      const result = await onConfirm(photoId!, clientRefRef.current);
+      const result = await onConfirm(photoId!, clientRefRef.current, kitchenPhotoId ?? undefined);
       if (session !== sessionRef.current) return;
       if (!result.ok) {
         // Kegagalan TIDAK menutup modal: foto tetap ada untuk dicoba lagi.
@@ -285,7 +296,7 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
 
         <div className="p-5 space-y-5">
           <div className="rounded-xl bg-[var(--kl-tint)] border border-[var(--kl-tint-border)] p-3 text-xs text-[var(--kl-accent-deep)]">
-            Cukup <strong>foto wajah</strong> untuk mencatat {actionLabel}. Checklist kebersihan 6 area diisi terpisah di halaman
+            <strong>Foto wajah wajib</strong>; foto kondisi dapur boleh dilampirkan. Checklist kebersihan diisi terpisah di halaman
             <strong> Laporan Kebersihan</strong> — tidak perlu diulang di sini.
           </div>
 
@@ -318,14 +329,14 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
                       className="sr-only"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) void captureOrUpload(file);
+                        if (file) void captureOrUpload(file, 'face');
                         e.currentTarget.value = '';
                       }}
                     />
                   </label>
                 </div>
 
-                {cameraOpen && (
+                {cameraOpen && cameraTarget === 'face' && (
                   <div className="space-y-2">
                     <div className="relative overflow-hidden rounded-xl border border-[var(--kl-border)] bg-black">
                       <video ref={videoRef} muted playsInline className="w-full" aria-label="Pratinjau kamera wajah" />
@@ -343,6 +354,28 @@ export const AttendanceFaceModal: React.FC<AttendanceFaceModalProps> = ({
                 )}
               </div>
             )}
+          </fieldset>
+
+          <fieldset disabled={busy} className="space-y-3 rounded-xl border border-[var(--kl-border)] p-3">
+            <legend className="font-semibold">Foto kondisi dapur (opsional)</legend>
+            <p className="text-xs">Lampirkan kondisi dapur saat {actionLabel}. Bukan pengganti checklist kebersihan.</p>
+            {kitchenPhotoId ? <div className="space-y-2">
+              <PhotoViewer photoId={kitchenPhotoId} alt={`Foto kondisi dapur saat ${actionLabel}`} className="max-w-[240px]" />
+              <button type="button" className={buttonClass} onClick={() => { setKitchenPhotoId(null); pendingKitchenRef.current = null; setSubmitError(null); setSubmitFailed(false); }}>Hapus Foto Dapur</button>
+            </div> : <div className="flex flex-wrap gap-2">
+              <button type="button" className={buttonClass} onClick={() => void openCamera('kitchen')}>Buka Kamera Dapur</button>
+              <label className={`${buttonClass} inline-flex items-center cursor-pointer`}>Unggah Foto Dapur
+                <input id="attendance-kitchen-photo" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => { const file = e.target.files?.[0]; if (file) void captureOrUpload(file, 'kitchen'); e.currentTarget.value = ''; }} />
+              </label>
+            </div>}
+            {cameraOpen && cameraTarget === 'kitchen' && <div className="space-y-2">
+              <div className="relative aspect-square overflow-hidden rounded-xl bg-black">
+                <video ref={videoRef} muted playsInline className="h-full w-full object-cover" aria-label="Pratinjau kamera dapur" />
+                <div data-camera-guide="grid" className="pointer-events-none absolute inset-4 grid grid-cols-3 grid-rows-3 border border-white/80">{Array.from({ length: 9 }, (_, i) => <div key={i} className="border border-white/40" />)}</div>
+              </div>
+              <button type="button" className={buttonClass} onClick={() => void captureOrUpload(undefined, 'kitchen')}>Ambil Foto Dapur</button>
+              <button type="button" className={buttonClass} onClick={stopCamera}>Tutup Kamera</button>
+            </div>}
           </fieldset>
 
           {cameraLoading && <p role="status">Membuka kamera…</p>}

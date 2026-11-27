@@ -214,7 +214,7 @@ export const DemoKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return { ok: true, message: `Status laporan diubah menjadi "${status}" (mode demo).` };
   };
 
-  const checkIn = async (assignmentId: string, staffId: string, checkInPhotoId: string) => {
+  const checkIn = async (assignmentId: string, staffId: string, checkInPhotoId: string, _cleanliness?: import('../types/kitchen').AttendanceCleanliness, _clientRef?: string, kitchenPhotoId?: string) => {
     const now = getRealWibNow();
     const [hh, mm] = now.timeHHMM.split(':').map(Number);
     const minutes = hh * 60 + mm;
@@ -235,7 +235,7 @@ export const DemoKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ c
         checkOutMinutes: null,
         lateMinutes: 0,
         durationMinutes: null,
-        checkInPhotoId: checkInPhotoId || null,
+        checkInKitchenPhotoId: kitchenPhotoId ?? null, checkInPhotoId: checkInPhotoId || null,
         checkOutPhotoId: null,
         supervisorStatus: null,
         updatedAt: `${now.date} ${now.timeHHMM} WIB`,
@@ -245,7 +245,7 @@ export const DemoKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ c
         attendance: exists
           ? prev.attendance.map((a) =>
               a.assignmentId === assignmentId && a.staffId === staffId
-                ? { ...a, checkInTime: now.timeHHMM, checkInMinutes: minutes, checkInPhotoId: checkInPhotoId || null }
+                ? { ...a, checkInTime: now.timeHHMM, checkInMinutes: minutes, checkInKitchenPhotoId: kitchenPhotoId ?? null, checkInPhotoId: checkInPhotoId || null }
                 : a
             )
           : [...prev.attendance, record],
@@ -254,7 +254,7 @@ export const DemoKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return { ok: true, message: 'Absen masuk tercatat (mode demo, hanya di memori).' };
   };
 
-  const checkOut = async (assignmentId: string, staffId: string, checkOutPhotoId: string) => {
+  const checkOut = async (assignmentId: string, staffId: string, checkOutPhotoId: string, _cleanliness?: import('../types/kitchen').AttendanceCleanliness, _clientRef?: string, kitchenPhotoId?: string) => {
     const now = getRealWibNow();
     const [hh, mm] = now.timeHHMM.split(':').map(Number);
     const minutes = hh * 60 + mm;
@@ -267,7 +267,7 @@ export const DemoKitchenProvider: React.FC<{ children: React.ReactNode }> = ({ c
           checkOutTime: now.timeHHMM,
           checkOutMinutes: minutes,
           durationMinutes: a.checkInMinutes != null ? minutes - a.checkInMinutes : null,
-          checkOutPhotoId: checkOutPhotoId || null,
+          checkOutKitchenPhotoId: kitchenPhotoId ?? null, checkOutPhotoId: checkOutPhotoId || null,
           updatedAt: `${now.date} ${now.timeHHMM} WIB`,
         };
       }),

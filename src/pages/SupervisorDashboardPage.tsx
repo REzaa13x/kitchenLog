@@ -1,3 +1,4 @@
+import { PhotoViewer } from '../components/PhotoViewer';
 import React, { useState } from 'react';
 import {
   ArrowRight,
@@ -344,9 +345,11 @@ export const SupervisorDashboardPage: React.FC<SupervisorDashboardPageProps> = (
                             )}
 
                             <AttendanceCleanlinessEvidence record={rec}/>
-                            {(rec?.checkInPhotoId || rec?.checkOutPhotoId) && (
+                            {(rec?.checkInPhotoId || rec?.checkOutPhotoId || rec?.checkInKitchenPhotoId || rec?.checkOutKitchenPhotoId) && (
                               <div className="flex flex-wrap items-center gap-2 pt-1.5">
-                                {rec?.checkInPhotoId && (
+                                {rec?.checkInKitchenPhotoId && <div className="w-32 whitespace-normal"><p className="text-xs font-semibold">Dapur · Masuk</p><PhotoViewer photoId={rec.checkInKitchenPhotoId} alt="Kondisi dapur saat check-in" /></div>}
+                      {rec?.checkOutKitchenPhotoId && <div className="w-32 whitespace-normal"><p className="text-xs font-semibold">Dapur · Pulang</p><PhotoViewer photoId={rec.checkOutKitchenPhotoId} alt="Kondisi dapur saat check-out" /></div>}
+                      {rec?.checkInPhotoId && (
                                   <FacePhotoAvatar
                                     photoId={rec.checkInPhotoId}
                                     label="Masuk"
